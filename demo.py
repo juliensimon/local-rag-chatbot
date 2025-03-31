@@ -18,7 +18,8 @@ import time
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_URL = "https://conductor.arcee.ai/v1"
 OPENAI_MODEL = "auto"
-CHROMA_PATH = "/data/vectorstore"
+CHROMA_PATH = "vectorstore"
+#CHROMA_PATH = "/data/vectorstore"
 PDF_PATH = "pdf"
 
 
@@ -237,15 +238,18 @@ def get_rag_response(qa_chain, query, chat_history):
     print("\n=== RAG Response ===")
 
     try:
+        # First get the result to ensure we have the answer and sources
         result = qa_chain.invoke({"question": query, "chat_history": chat_history})
-
-        # Print answer with streaming
+        
+        # Print the answer with character-by-character "streaming" simulation
         print("\nAnswer: ", end="", flush=True)
-        for chunk in result["answer"]:
-            print(chunk, end="", flush=True)
+        answer = result.get("answer", "No answer found.")
+        for char in answer:
+            print(char, end="", flush=True)
+            time.sleep(0.005)  # Small delay to simulate streaming
         print()
 
-        # Print unique sources
+        # Print sources
         if result.get("source_documents"):
             print("\nSources:")
             seen_sources = set()
