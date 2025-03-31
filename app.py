@@ -70,17 +70,7 @@ def chat_response(message, history, query_type):
     else:
         # Use vanilla LLM for direct responses without document context
         # This bypasses the retrieval step and directly queries the language model
-        # For vanilla LLM, we need to format the chat history properly
-        messages = []
-        for user_msg, assistant_msg in chat_history:
-            messages.append({"role": "user", "content": user_msg})
-            messages.append({"role": "assistant", "content": assistant_msg})
-        
-        # Add the current message
-        messages.append({"role": "user", "content": message})
-        
-        # Invoke the LLM with the full conversation history
-        result = llm.invoke(messages)
+        result = llm.invoke(message)
         response_text = result.content
 
     return response_text
@@ -201,6 +191,7 @@ with gr.Blocks() as demo:
         examples=[
             "Tell me about Arcee Fusion.",
             "How does deepseek-R1 differ from deepseek-v3?",
+            "What is the main innovation in DELLA merging?"
         ],
         inputs=msg,
     )
