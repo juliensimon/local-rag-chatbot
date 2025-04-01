@@ -1,25 +1,26 @@
-import os
 import glob
+import os
 
 # Set tokenizers parallelism and transformers cache before importing other libraries
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+from langchain.chains import ConversationalRetrievalChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
-from langchain.chains import ConversationalRetrievalChain
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-import time
+from langchain_openai import ChatOpenAI
 
 # Constants
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_URL = "https://conductor.arcee.ai/v1"
 OPENAI_MODEL = "auto"
 CHROMA_PATH = "vectorstore"
-#CHROMA_PATH = "/data/vectorstore"
+# CHROMA_PATH = "/data/vectorstore"
 PDF_PATH = "pdf"
 
 
@@ -240,7 +241,7 @@ def get_rag_response(qa_chain, query, chat_history):
     try:
         # First get the result to ensure we have the answer and sources
         result = qa_chain.invoke({"question": query, "chat_history": chat_history})
-        
+
         # Print the answer with character-by-character "streaming" simulation
         print("\nAnswer: ", end="", flush=True)
         answer = result.get("answer", "No answer found.")

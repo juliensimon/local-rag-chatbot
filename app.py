@@ -1,16 +1,16 @@
 # Import necessary libraries
 import gradio as gr
+from demo import create_embeddings  # Function to create text embeddings
+from demo import create_llm  # Function to initialize the language model
+from demo import create_qa_chain  # Function to create question-answering chain
 from demo import (
-    create_llm,  # Function to initialize the language model
-    create_embeddings,  # Function to create text embeddings
     load_or_create_vectorstore,  # Function to load or create vector database
-    create_qa_chain,  # Function to create question-answering chain
 )
 
 
 def initialize_chain():
     """Initialize the RAG (Retrieval-Augmented Generation) chain and return it.
-    
+
     This function sets up all components needed for document-based Q&A:
     1. Language model for generating responses
     2. Embeddings model for converting text to vectors
@@ -19,13 +19,15 @@ def initialize_chain():
     """
     llm = create_llm()  # Initialize the language model
     embeddings = create_embeddings()  # Initialize the embeddings model
-    vectorstore = load_or_create_vectorstore(embeddings)  # Load or create the vector database
+    vectorstore = load_or_create_vectorstore(
+        embeddings
+    )  # Load or create the vector database
     return create_qa_chain(llm, vectorstore)  # Create and return the QA chain
 
 
 def chat_response(message, history, query_type):
     """Process chat messages and return responses using either RAG or vanilla LLM.
-    
+
     This function handles two modes of operation:
     1. RAG mode: Retrieves relevant document chunks and generates answers based on them
     2. Vanilla LLM mode: Directly queries the LLM without document context
@@ -114,13 +116,13 @@ with gr.Blocks() as demo:
 
     def respond(message, chat_history, is_rag_enabled):
         """Generate response to user message and update the UI.
-        
+
         This function:
         1. Processes the user's message
         2. Gets a response using the appropriate method (RAG or vanilla)
         3. Updates the chat history
         4. Retrieves context for display (in RAG mode)
-        
+
         Args:
             message (str): User input message
             chat_history (list): Previous conversation history
@@ -158,16 +160,16 @@ with gr.Blocks() as demo:
 
     def update_context_visibility(is_rag_enabled):
         """Show/hide context box based on RAG toggle.
-        
+
         Args:
             is_rag_enabled (bool): Whether RAG mode is enabled
-            
+
         Returns:
             gr.update: Update object to modify the context box visibility
         """
         return gr.update(
             visible=is_rag_enabled,  # Only show context box in RAG mode
-            value="" if not is_rag_enabled else None  # Clear content when hiding
+            value="" if not is_rag_enabled else None,  # Clear content when hiding
         )
 
     # Connect event handlers to UI components
@@ -191,7 +193,7 @@ with gr.Blocks() as demo:
         examples=[
             "Tell me about Arcee Fusion.",
             "How does deepseek-R1 differ from deepseek-v3?",
-            "What is the main innovation in DELLA merging?"
+            "What is the main innovation in DELLA merging?",
         ],
         inputs=msg,
     )
