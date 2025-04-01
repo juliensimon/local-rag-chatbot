@@ -1,3 +1,10 @@
+"""
+Gradio web application for RAG-powered document chat using Arcee Conductor.
+
+This module provides a user interface for querying documents using either
+Retrieval-Augmented Generation (RAG) or vanilla LLM responses.
+"""
+
 # Import necessary libraries
 import gradio as gr
 from demo import create_embeddings  # Function to create text embeddings
@@ -17,12 +24,12 @@ def initialize_chain():
     3. Vector store for document retrieval
     4. QA chain that combines retrieval with generation
     """
-    llm = create_llm()  # Initialize the language model
+    model = create_llm()  # Initialize the language model
     embeddings = create_embeddings()  # Initialize the embeddings model
     vectorstore = load_or_create_vectorstore(
         embeddings
     )  # Load or create the vector database
-    return create_qa_chain(llm, vectorstore)  # Create and return the QA chain
+    return create_qa_chain(model, vectorstore)  # Create and return the QA chain
 
 
 def chat_response(message, history, query_type):
@@ -41,7 +48,7 @@ def chat_response(message, history, query_type):
         str: The formatted response text including sources for RAG queries
     """
     # Convert Gradio history format to the format expected by our chain
-    chat_history = [(msg, resp) for msg, resp in history] if history else []
+    chat_history = list(history) if history else []
 
     if query_type == "RAG":
         # Use RAG to get answer with context from documents
@@ -88,7 +95,8 @@ with gr.Blocks() as demo:
     # Header and description section
     gr.Markdown("# RAG-Powered Document Chat with Arcee Conductor")
     gr.Markdown(
-        "Ask questions about your documents. The system will provide answers based on the content of your PDFs."
+        "Ask questions about your documents. The system will provide answers "
+        "based on the content of your PDFs."
     )
 
     # RAG toggle switch - allows switching between RAG and vanilla LLM modes
@@ -175,15 +183,22 @@ with gr.Blocks() as demo:
     # Connect event handlers to UI components
     # When user presses Enter in the message box
     msg.submit(
-        respond, [msg, chatbot, rag_enabled], [msg, chatbot, context_box, rag_enabled]
+        respond,
+        [msg, chatbot, rag_enabled],
+        [msg, chatbot, context_box, rag_enabled],
     )
     # When user clicks the Submit button
     submit.click(
-        respond, [msg, chatbot, rag_enabled], [msg, chatbot, context_box, rag_enabled]
+        respond,
+        [msg, chatbot, rag_enabled],
+        [msg, chatbot, context_box, rag_enabled],
     )
     # When user clicks the Clear button - reset everything
     clear.click(
-        lambda: [[], "", True], None, [chatbot, context_box, rag_enabled], queue=False
+        lambda: [[], "", True],
+        None,
+        [chatbot, context_box, rag_enabled],
+        queue=False,
     )
     # When user toggles the RAG switch - update context box visibility
     rag_enabled.change(update_context_visibility, rag_enabled, context_box)

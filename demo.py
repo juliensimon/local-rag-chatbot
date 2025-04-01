@@ -1,11 +1,17 @@
+"""
+RAG (Retrieval-Augmented Generation) utilities for document processing and querying.
+
+This module provides functions for:
+1. Loading and processing PDF documents
+2. Creating and managing vector embeddings
+3. Setting up language models and QA chains
+4. Handling both RAG and vanilla LLM responses
+"""
+
 import glob
 import os
-
-# Set tokenizers parallelism and transformers cache before importing other libraries
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from langchain.chains import ConversationalRetrievalChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -14,6 +20,10 @@ from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
+
+# Set tokenizers parallelism before importing other libraries
+# os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 
 # Constants
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -112,7 +122,7 @@ def handle_existing_vectorstore(embeddings):
     current_pdfs = get_pdf_files()
     if not current_pdfs:
         print("No PDF files found in directory.")
-        exit(1)
+        sys.exit(1)
 
     collection = vectorstore.get()
     processed_files = {
@@ -154,7 +164,7 @@ def create_new_vectorstore(embeddings):
     if not pdf_files:
         print(f"No PDF files found in '{PDF_PATH}' directory!")
         print(f"Please add your PDF files to the '{PDF_PATH}' directory and run again.")
-        exit(1)
+        sys.exit(1)
 
     print(f"Found {len(pdf_files)} PDF files to process...")
     print("(This may take a while as documents need to be processed and embedded)")
@@ -166,7 +176,9 @@ def create_new_vectorstore(embeddings):
     filtered_chunks = process_documents(documents, get_text_splitter())
 
     return Chroma.from_documents(
-        documents=filtered_chunks, embedding=embeddings, persist_directory=CHROMA_PATH
+        documents=filtered_chunks,
+        embedding=embeddings,
+        persist_directory=CHROMA_PATH,
     )
 
 
@@ -198,7 +210,7 @@ Answer:"""
     )
 
 
-def get_vanilla_response(llm, query):
+def get_vanilla_response(query):
     """Get response from vanilla chain without RAG with streaming."""
     streaming_llm = create_llm(streaming=True)
 
@@ -224,7 +236,7 @@ Answer:"""
             print(chunk.content, end="", flush=True)
         print()  # New line after streaming completes
 
-    except Exception as e:
+    except (KeyboardInterrupt, ConnectionError) as e:
         print(f"\nError getting vanilla response: {str(e)}")
 
 
@@ -263,7 +275,7 @@ def get_rag_response(qa_chain, query, chat_history):
                     print(f"- {source}, page {page}")
                     seen_sources.add(source_key)
 
-    except Exception as e:
+    except (KeyboardInterrupt, ConnectionError) as e:
         print(f"\nError: {str(e)}")
 
 
@@ -279,7 +291,7 @@ def main():
     query = "Tell me about Arcee Fusion."
 
     # Get both vanilla and RAG responses
-    get_vanilla_response(llm, query)
+    get_vanilla_response(query)
     get_rag_response(qa_chain, query, chat_history)
 
 
