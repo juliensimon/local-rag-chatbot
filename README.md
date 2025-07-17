@@ -10,6 +10,12 @@ pinned: false
 ---
 
 # Conductor RAG - Document Question-Answering System
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Gradio](https://img.shields.io/badge/Gradio-5.23.1-orange)](https://gradio.app/)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Spaces-yellow)](https://huggingface.co/spaces)
+[![Arcee Conductor](https://img.shields.io/badge/Arcee-Conductor-purple)](https://conductor.arcee.ai)
+
 🚀 A Retrieval-Augmented Generation (RAG) powered chat interface for document Q&A using Arcee Conductor
 
 ## Overview
@@ -90,6 +96,13 @@ You can easily deploy this application as your own Hugging Face Space using the 
    Visit `https://huggingface.co/spaces/your-username/conductor-rag-your-name` to see your Space being built and deployed.
 
 Your Space will automatically build and deploy the application. Once complete, you can access it via the provided URL and share it with others.
+
+## Resources
+
+- [Hugging Face Spaces Documentation](https://huggingface.co/docs/hub/spaces-overview)
+- [Gradio Documentation](https://gradio.app/docs/)
+- [Arcee Conductor Documentation](https://conductor.arcee.ai/docs)
+- [LangChain Documentation](https://python.langchain.com/docs/get_started/introduction)
 
 ---
 Built with 💖 using Arcee Conductor
