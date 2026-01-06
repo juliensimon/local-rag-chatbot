@@ -215,7 +215,7 @@ def format_chat_history(chat_history, limit=CHAT_HISTORY_LIMIT):
 
 
 # Prompt template for RAG responses
-RAG_PROMPT_TEMPLATE = """Answer the question using your own knowledge and the provided context.
+RAG_PROMPT_TEMPLATE = """Answer the question naturally and conversationally based on the provided context. Be direct and informative - if the answer is in the context, state it clearly without unnecessary formal structure or sections. Write as if you're explaining to a colleague.
 
 Context:
 {context}
@@ -255,28 +255,36 @@ class QAChainWrapper:
         """Return the retriever for external access."""
         return self._retriever
 
-    def get_retriever_with_filter(self, metadata_filter=None):
-        """Get a retriever with optional metadata filtering.
+    def get_retriever_with_filter(self, metadata_filter=None, search_type="mmr"):
+        """Get a retriever with optional metadata filtering and search type.
 
         Args:
             metadata_filter: Dict for Chroma where clause, e.g.:
-                - {"source": "pdf/doc.pdf"} - exact match
+                - {"source": {"$eq": "pdf/doc.pdf"}} - exact match
                 - {"page": {"$gte": 5}} - page >= 5
-                - {"source": {"$contains": "paper"}} - source contains 'paper'
+                - {"source": {"$in": ["pdf/doc1.pdf", "pdf/doc2.pdf"]}} - source in list
+            search_type: "mmr" for Maximal Marginal Relevance (diverse results) or 
+                        "similarity" for pure similarity search (most relevant)
 
         Returns:
-            Retriever configured with MMR and optional filter
+            Retriever configured with specified search type and optional filter
         """
-        search_kwargs = {
-            "k": RETRIEVER_K,
-            "fetch_k": RETRIEVER_FETCH_K,
-            "lambda_mult": MMR_LAMBDA,
-        }
+        if search_type == "mmr":
+            search_kwargs = {
+                "k": RETRIEVER_K,
+                "fetch_k": RETRIEVER_FETCH_K,
+                "lambda_mult": MMR_LAMBDA,
+            }
+        else:  # similarity search
+            search_kwargs = {
+                "k": RETRIEVER_K,
+            }
+        
         if metadata_filter:
             search_kwargs["filter"] = metadata_filter
 
         return self._vectorstore.as_retriever(
-            search_type="mmr",
+            search_type=search_type,
             search_kwargs=search_kwargs
         )
 
@@ -284,8 +292,10 @@ class QAChainWrapper:
         """Stream the chain response token by token.
 
         Args:
-            inputs: Dict with 'question', optional 'chat_history', and optional 'filter'
+            inputs: Dict with 'question', optional 'chat_history', optional 'filter', 
+                    and optional 'search_type'
                 - filter: Chroma metadata filter dict
+                - search_type: "mmr" or "similarity" (default: "mmr")
 
         Yields:
             dict: Contains 'chunk' (token text) and 'source_documents'
@@ -293,15 +303,43 @@ class QAChainWrapper:
         question = inputs["question"]
         chat_history = inputs.get("chat_history", [])
         metadata_filter = inputs.get("filter")
+        search_type = inputs.get("search_type", "mmr")
 
-        # Get retriever (with optional filter)
-        if metadata_filter:
-            retriever = self.get_retriever_with_filter(metadata_filter)
+        # Get retriever (with optional filter and search type)
+        if metadata_filter or search_type != "mmr":
+            retriever = self.get_retriever_with_filter(metadata_filter, search_type=search_type)
         else:
             retriever = self._retriever
 
-        # Retrieve documents using MMR for diversity
+        # Retrieve documents
         docs = retriever.invoke(question)
+        
+        # Get similarity scores for highlighting (if using similarity search)
+        docs_with_scores = None
+        if search_type == "similarity":
+            try:
+                # Get docs with similarity scores (lower score = more similar)
+                # Match the retrieved docs with scored docs
+                scored_docs = self._vectorstore.similarity_search_with_score(
+                    question, 
+                    k=RETRIEVER_K,
+                    filter=metadata_filter if metadata_filter else None
+                )
+                # Create a mapping to match docs by content
+                docs_with_scores = []
+                for doc in docs:
+                    # Find matching scored doc
+                    for scored_doc, score in scored_docs:
+                        if (doc.page_content[:100] == scored_doc.page_content[:100] and
+                            doc.metadata.get("page") == scored_doc.metadata.get("page")):
+                            docs_with_scores.append((doc, score))
+                            break
+                    else:
+                        # If no match found, use None score
+                        docs_with_scores.append((doc, None))
+            except Exception:
+                pass  # Fall back to regular retrieval if scores unavailable
+        
         context = "\n\n".join(doc.page_content for doc in docs)
 
         # Format chat history
@@ -318,9 +356,17 @@ class QAChainWrapper:
                 "context": context,
                 "chat_history": history_str
             }):
-                yield {"chunk": chunk.content, "source_documents": docs}
+                yield {
+                    "chunk": chunk.content, 
+                    "source_documents": docs,
+                    "docs_with_scores": docs_with_scores
+                }
         except Exception as e:
-            yield {"chunk": f"\n\n[Error: {e}]", "source_documents": docs}
+            yield {
+                "chunk": f"\n\n[Error: {e}]", 
+                "source_documents": docs,
+                "docs_with_scores": None
+            }
 
 
 def create_qa_chain(vectorstore):
