@@ -11,31 +11,32 @@ This module provides functions for:
 import glob
 import os
 import sys
-import time
 
-from langchain.chains import ConversationalRetrievalChain
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 
-# Set tokenizers parallelism before importing other libraries
-# os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# Disable tokenizers parallelism to avoid fork warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# Configuration - use environment variables with sensible defaults
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or "dummy-key-not-needed"
+OPENAI_URL = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8080")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "dummy")
+CHROMA_PATH = os.getenv("CHROMA_PATH", "vectorstore")
+PDF_PATH = os.getenv("PDF_PATH", "pdf")
 
-# Constants
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_URL = "https://conductor.arcee.ai/v1"
-OPENAI_MODEL = "auto"
-CHROMA_PATH = "vectorstore"
-# CHROMA_PATH = "/data/vectorstore"
-PDF_PATH = "pdf"
+# RAG configuration
+RETRIEVER_K = 3  # Number of documents to retrieve
+CHAT_HISTORY_LIMIT = 5  # Number of recent messages to include in context
 
 
 def create_llm(streaming=False):
-    """Initialize the OpenAI language model.
+    """Initialize the OpenAI-compatible language model.
 
     Args:
         streaming (bool): Whether to enable response streaming
@@ -182,9 +183,33 @@ def create_new_vectorstore(embeddings):
     )
 
 
-def create_qa_chain(llm, vectorstore):
-    """Create the question-answering chain."""
-    prompt_template = """Answer the question using your own knowledge and the provided context.
+def format_chat_history(chat_history, limit=CHAT_HISTORY_LIMIT):
+    """Format chat history for inclusion in prompts.
+
+    Args:
+        chat_history: List of message tuples or Message objects
+        limit: Maximum number of recent messages to include
+
+    Returns:
+        str: Formatted chat history string
+    """
+    if not chat_history:
+        return ""
+
+    history_parts = []
+    for msg in chat_history[-limit:]:
+        if isinstance(msg, tuple):
+            history_parts.append(f"Human: {msg[0]}\nAssistant: {msg[1]}")
+        elif isinstance(msg, HumanMessage):
+            history_parts.append(f"Human: {msg.content}")
+        elif isinstance(msg, AIMessage):
+            history_parts.append(f"Assistant: {msg.content}")
+
+    return "\n".join(history_parts)
+
+
+# Prompt template for RAG responses
+RAG_PROMPT_TEMPLATE = """Answer the question using your own knowledge and the provided context.
 
 Context:
 {context}
@@ -196,103 +221,120 @@ Previous conversation:
 
 Answer:"""
 
-    prompt = ChatPromptTemplate.from_template(prompt_template)
 
-    return ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(
-            search_type="similarity", search_kwargs={"k": 3}
-        ),
-        return_source_documents=True,
-        combine_docs_chain_kwargs={"prompt": prompt},
-        chain_type="stuff",
-        verbose=True,
-    )
+class QAChainWrapper:
+    """Wrapper for RAG question-answering with streaming support."""
 
+    def __init__(self, retriever, prompt):
+        """Initialize the QA chain wrapper.
 
-def get_vanilla_response(query):
-    """Get response from vanilla chain without RAG with streaming."""
-    streaming_llm = create_llm(streaming=True)
-
-    vanilla_prompt = ChatPromptTemplate.from_template(
+        Args:
+            retriever: Document retriever instance
+            prompt: ChatPromptTemplate for generating responses
         """
-Question: {question}
+        self._retriever = retriever
+        self._prompt = prompt
 
-Instructions:
-- If you don't know the answer, say so
-- Be concise and clear
-- Only state what you're confident about
+    @property
+    def retriever(self):
+        """Return the retriever for external access."""
+        return self._retriever
 
-Answer:"""
-    )
+    def stream(self, inputs):
+        """Stream the chain response token by token.
 
-    chain = vanilla_prompt | streaming_llm
+        Args:
+            inputs: Dict with 'question' and optional 'chat_history'
 
-    print("\n=== Vanilla Response (No RAG) ===")
+        Yields:
+            dict: Contains 'chunk' (token text) and 'source_documents'
+        """
+        question = inputs["question"]
+        chat_history = inputs.get("chat_history", [])
 
-    try:
-        print("Answer: ", end="", flush=True)
-        for chunk in chain.stream({"question": query}):
-            print(chunk.content, end="", flush=True)
-        print()  # New line after streaming completes
+        # Retrieve documents first
+        docs = self._retriever.invoke(question)
+        context = "\n\n".join(doc.page_content for doc in docs)
 
-    except (KeyboardInterrupt, ConnectionError) as e:
-        print(f"\nError getting vanilla response: {str(e)}")
+        # Format chat history
+        history_str = format_chat_history(chat_history)
+
+        # Create streaming LLM
+        streaming_llm = create_llm(streaming=True)
+
+        # Stream the response with error handling
+        chain = self._prompt | streaming_llm
+        try:
+            for chunk in chain.stream({
+                "question": question,
+                "context": context,
+                "chat_history": history_str
+            }):
+                yield {"chunk": chunk.content, "source_documents": docs}
+        except Exception as e:
+            yield {"chunk": f"\n\n[Error: {e}]", "source_documents": docs}
 
 
-def get_rag_response(qa_chain, query, chat_history):
-    """Get response from RAG-powered chain with streaming.
+def create_qa_chain(vectorstore):
+    """Create the question-answering chain.
 
     Args:
-        qa_chain: The QA chain instance
-        query (str): User's question
-        chat_history (list): Previous conversation history
+        vectorstore: Vector store instance for document retrieval
+
+    Returns:
+        QAChainWrapper: Configured QA chain with streaming support
     """
-    print("\n=== RAG Response ===")
+    retriever = vectorstore.as_retriever(
+        search_type="similarity", search_kwargs={"k": RETRIEVER_K}
+    )
+    prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
 
-    try:
-        # First get the result to ensure we have the answer and sources
-        result = qa_chain.invoke({"question": query, "chat_history": chat_history})
-
-        # Print the answer with character-by-character "streaming" simulation
-        print("\nAnswer: ", end="", flush=True)
-        answer = result.get("answer", "No answer found.")
-        for char in answer:
-            print(char, end="", flush=True)
-            time.sleep(0.005)  # Small delay to simulate streaming
-        print()
-
-        # Print sources
-        if result.get("source_documents"):
-            print("\nSources:")
-            seen_sources = set()
-            for doc in result["source_documents"]:
-                source = doc.metadata.get("source", "Unknown")
-                page = doc.metadata.get("page", "unknown")
-                source_key = f"{source}:{page}"
-
-                if source_key not in seen_sources:
-                    print(f"- {source}, page {page}")
-                    seen_sources.add(source_key)
-
-    except (KeyboardInterrupt, ConnectionError) as e:
-        print(f"\nError: {str(e)}")
+    return QAChainWrapper(retriever, prompt)
 
 
 def main():
-    """Main execution function."""
-    # Create streaming LLM for RAG
-    llm = create_llm(streaming=True)
+    """Main execution function for CLI testing."""
+    import time
+
     embeddings = create_embeddings()
     vectorstore = load_or_create_vectorstore(embeddings)
-    qa_chain = create_qa_chain(llm, vectorstore)
+    qa_chain = create_qa_chain(vectorstore)
 
-    chat_history = []
     query = "Tell me about Arcee Fusion."
+    chat_history = []
 
-    # Get both vanilla and RAG responses
-    get_vanilla_response(query)
-    get_rag_response(qa_chain, query, chat_history)
+    # Test vanilla response
+    print("\n=== Vanilla Response (No RAG) ===")
+    streaming_llm = create_llm(streaming=True)
+    print("Answer: ", end="", flush=True)
+    try:
+        for chunk in streaming_llm.stream(query):
+            print(chunk.content, end="", flush=True)
+        print()
+    except Exception as e:
+        print(f"\nError: {e}")
+
+    # Test RAG response
+    print("\n=== RAG Response ===")
+    print("Answer: ", end="", flush=True)
+    try:
+        for chunk_data in qa_chain.stream({"question": query, "chat_history": chat_history}):
+            print(chunk_data["chunk"], end="", flush=True)
+        print()
+
+        # Print sources
+        if chunk_data.get("source_documents"):
+            print("\nSources:")
+            seen_sources = set()
+            for doc in chunk_data["source_documents"]:
+                source = doc.metadata.get("source", "Unknown")
+                page = doc.metadata.get("page", "unknown")
+                source_key = f"{source}:{page}"
+                if source_key not in seen_sources:
+                    print(f"- {source}, page {page}")
+                    seen_sources.add(source_key)
+    except Exception as e:
+        print(f"\nError: {e}")
 
 
 if __name__ == "__main__":
