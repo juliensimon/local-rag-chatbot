@@ -31,7 +31,9 @@ CHROMA_PATH = os.getenv("CHROMA_PATH", "vectorstore")
 PDF_PATH = os.getenv("PDF_PATH", "pdf")
 
 # RAG configuration
-RETRIEVER_K = 3  # Number of documents to retrieve
+RETRIEVER_K = 3  # Number of final documents to return
+RETRIEVER_FETCH_K = 10  # Number of candidates to fetch for MMR
+MMR_LAMBDA = 0.7  # Balance between relevance (1.0) and diversity (0.0)
 CHAT_HISTORY_LIMIT = 5  # Number of recent messages to include in context
 
 
@@ -187,7 +189,7 @@ def format_chat_history(chat_history, limit=CHAT_HISTORY_LIMIT):
     """Format chat history for inclusion in prompts.
 
     Args:
-        chat_history: List of message tuples or Message objects
+        chat_history: List of message tuples, dicts, or Message objects
         limit: Maximum number of recent messages to include
 
     Returns:
@@ -200,6 +202,10 @@ def format_chat_history(chat_history, limit=CHAT_HISTORY_LIMIT):
     for msg in chat_history[-limit:]:
         if isinstance(msg, tuple):
             history_parts.append(f"Human: {msg[0]}\nAssistant: {msg[1]}")
+        elif isinstance(msg, dict):
+            # OpenAI-style message format
+            role = "Human" if msg.get("role") == "user" else "Assistant"
+            history_parts.append(f"{role}: {msg.get('content', '')}")
         elif isinstance(msg, HumanMessage):
             history_parts.append(f"Human: {msg.content}")
         elif isinstance(msg, AIMessage):
@@ -223,37 +229,79 @@ Answer:"""
 
 
 class QAChainWrapper:
-    """Wrapper for RAG question-answering with streaming support."""
+    """Wrapper for RAG question-answering with streaming support and metadata filtering."""
 
-    def __init__(self, retriever, prompt):
+    def __init__(self, vectorstore, prompt):
         """Initialize the QA chain wrapper.
 
         Args:
-            retriever: Document retriever instance
+            vectorstore: Chroma vectorstore instance
             prompt: ChatPromptTemplate for generating responses
         """
-        self._retriever = retriever
+        self._vectorstore = vectorstore
         self._prompt = prompt
+        # Default retriever using MMR for diverse results
+        self._retriever = vectorstore.as_retriever(
+            search_type="mmr",
+            search_kwargs={
+                "k": RETRIEVER_K,
+                "fetch_k": RETRIEVER_FETCH_K,
+                "lambda_mult": MMR_LAMBDA,
+            }
+        )
 
     @property
     def retriever(self):
         """Return the retriever for external access."""
         return self._retriever
 
+    def get_retriever_with_filter(self, metadata_filter=None):
+        """Get a retriever with optional metadata filtering.
+
+        Args:
+            metadata_filter: Dict for Chroma where clause, e.g.:
+                - {"source": "pdf/doc.pdf"} - exact match
+                - {"page": {"$gte": 5}} - page >= 5
+                - {"source": {"$contains": "paper"}} - source contains 'paper'
+
+        Returns:
+            Retriever configured with MMR and optional filter
+        """
+        search_kwargs = {
+            "k": RETRIEVER_K,
+            "fetch_k": RETRIEVER_FETCH_K,
+            "lambda_mult": MMR_LAMBDA,
+        }
+        if metadata_filter:
+            search_kwargs["filter"] = metadata_filter
+
+        return self._vectorstore.as_retriever(
+            search_type="mmr",
+            search_kwargs=search_kwargs
+        )
+
     def stream(self, inputs):
         """Stream the chain response token by token.
 
         Args:
-            inputs: Dict with 'question' and optional 'chat_history'
+            inputs: Dict with 'question', optional 'chat_history', and optional 'filter'
+                - filter: Chroma metadata filter dict
 
         Yields:
             dict: Contains 'chunk' (token text) and 'source_documents'
         """
         question = inputs["question"]
         chat_history = inputs.get("chat_history", [])
+        metadata_filter = inputs.get("filter")
 
-        # Retrieve documents first
-        docs = self._retriever.invoke(question)
+        # Get retriever (with optional filter)
+        if metadata_filter:
+            retriever = self.get_retriever_with_filter(metadata_filter)
+        else:
+            retriever = self._retriever
+
+        # Retrieve documents using MMR for diversity
+        docs = retriever.invoke(question)
         context = "\n\n".join(doc.page_content for doc in docs)
 
         # Format chat history
@@ -276,26 +324,20 @@ class QAChainWrapper:
 
 
 def create_qa_chain(vectorstore):
-    """Create the question-answering chain.
+    """Create the question-answering chain with MMR and metadata filtering support.
 
     Args:
-        vectorstore: Vector store instance for document retrieval
+        vectorstore: Chroma vectorstore instance
 
     Returns:
-        QAChainWrapper: Configured QA chain with streaming support
+        QAChainWrapper: Configured QA chain with MMR retrieval and streaming support
     """
-    retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs={"k": RETRIEVER_K}
-    )
     prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
-
-    return QAChainWrapper(retriever, prompt)
+    return QAChainWrapper(vectorstore, prompt)
 
 
 def main():
     """Main execution function for CLI testing."""
-    import time
-
     embeddings = create_embeddings()
     vectorstore = load_or_create_vectorstore(embeddings)
     qa_chain = create_qa_chain(vectorstore)
@@ -314,8 +356,8 @@ def main():
     except Exception as e:
         print(f"\nError: {e}")
 
-    # Test RAG response
-    print("\n=== RAG Response ===")
+    # Test RAG response with MMR (diverse results)
+    print("\n=== RAG Response (MMR for diversity) ===")
     print("Answer: ", end="", flush=True)
     try:
         for chunk_data in qa_chain.stream({"question": query, "chat_history": chat_history}):
@@ -325,6 +367,31 @@ def main():
         # Print sources
         if chunk_data.get("source_documents"):
             print("\nSources:")
+            seen_sources = set()
+            for doc in chunk_data["source_documents"]:
+                source = doc.metadata.get("source", "Unknown")
+                page = doc.metadata.get("page", "unknown")
+                source_key = f"{source}:{page}"
+                if source_key not in seen_sources:
+                    print(f"- {source}, page {page}")
+                    seen_sources.add(source_key)
+    except Exception as e:
+        print(f"\nError: {e}")
+
+    # Example: RAG with metadata filter (filter by page number)
+    print("\n=== RAG Response with Metadata Filter (page >= 5) ===")
+    print("Answer: ", end="", flush=True)
+    try:
+        for chunk_data in qa_chain.stream({
+            "question": query,
+            "chat_history": chat_history,
+            "filter": {"page": {"$gte": 5}}  # Only pages 5+
+        }):
+            print(chunk_data["chunk"], end="", flush=True)
+        print()
+
+        if chunk_data.get("source_documents"):
+            print("\nSources (filtered):")
             seen_sources = set()
             for doc in chunk_data["source_documents"]:
                 source = doc.metadata.get("source", "Unknown")
