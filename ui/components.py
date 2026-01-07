@@ -194,11 +194,16 @@ def create_ui_components(available_sources):
         with gr.Accordion("💡 Example Questions", open=False):
             gr.Examples(
                 examples=[
-                    "What are the exact ROUGE-2 scores for T5-Small, T5-Base, and T5-Large on the XSum dataset?",
-                    "What are the exact model sizes in parameters for T5-Small, T5-Base, T5-Large, and T5-XL?",
-                    "What are the exact values for beta1, beta2, and epsilon hyperparameters used in training?",
-                    "What percentage improvement does GKD achieve over Supervised KD according to the figures?",
-                    "What is the exact number of training steps mentioned for WMT en-de experiments?",
+                    "What are the main challenges for achieving net zero emissions by 2050?",
+                    "What is the projected global renewable energy capacity for 2028?",
+                    "How is the global EV market expected to evolve in the coming years?",
+                    "What percentage of global electricity generation came from renewables in 2023?",
+                    "What are the key policy recommendations for accelerating clean energy transitions?",
+                    "What is the projected investment in clean energy technologies for 2024?",
+                    "How do critical minerals supply chains impact renewable energy deployment?",
+                    "What are the exact CO2 emissions reduction targets in the Net Zero Roadmap?",
+                    "What role does energy efficiency play in reducing global energy demand?",
+                    "What are the specific challenges facing developing countries in clean energy transitions?",
                 ],
                 inputs=msg,
                 label="",
@@ -222,4 +227,5 @@ def create_ui_components(available_sources):
         "context_section": context_section,
         "advanced_options": advanced_options,
     }
+
 
