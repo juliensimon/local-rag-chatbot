@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from langchain_core.documents import Document
 
 from qa_chain import QAChainWrapper
 from langchain_core.prompts import ChatPromptTemplate
@@ -114,7 +115,9 @@ def test_stream_with_query_rewriting(mock_format_history, mock_create_llm, qa_ch
     mock_create_llm.return_value = mock_llm
 
     mock_retriever = MagicMock()
-    mock_retriever.invoke.return_value = [Mock(page_content="Test")]
+    mock_retriever.invoke.return_value = [
+        Document(page_content="Test", metadata={"source": "test.pdf", "page": 1})
+    ]
     qa_chain_wrapper._retriever = mock_retriever
 
     mock_chain = MagicMock()

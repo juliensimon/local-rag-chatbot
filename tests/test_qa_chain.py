@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from langchain_core.documents import Document
 
 from qa_chain import QAChainWrapper, create_qa_chain
 
@@ -161,7 +162,9 @@ def test_stream_mmr(mock_format_history, mock_create_llm, qa_chain_wrapper, mock
     mock_create_llm.return_value = mock_llm
 
     mock_retriever = MagicMock()
-    mock_retriever.invoke.return_value = [Mock(page_content="Test")]
+    mock_retriever.invoke.return_value = [
+        Document(page_content="Test", metadata={"source": "test.pdf", "page": 1})
+    ]
     qa_chain_wrapper._retriever = mock_retriever
 
     # Mock the chain operator
@@ -220,7 +223,9 @@ def test_stream_error(mock_format_history, mock_create_llm, qa_chain_wrapper, mo
     mock_create_llm.return_value = mock_llm
 
     mock_retriever = MagicMock()
-    mock_retriever.invoke.return_value = [Mock(page_content="Test")]
+    mock_retriever.invoke.return_value = [
+        Document(page_content="Test", metadata={"source": "test.pdf", "page": 1})
+    ]
     qa_chain_wrapper._retriever = mock_retriever
 
     # Mock the chain operator to raise an error
