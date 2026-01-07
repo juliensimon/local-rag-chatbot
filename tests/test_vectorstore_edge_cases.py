@@ -15,7 +15,7 @@ def test_handle_existing_vectorstore_no_pdfs(mock_chroma, mock_get_pdfs):
     mock_chroma.return_value = mock_vectorstore
     mock_get_pdfs.return_value = []
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FileNotFoundError):
         handle_existing_vectorstore(MagicMock())
 
 
@@ -48,4 +48,6 @@ def test_handle_existing_vectorstore_no_metadatas(mock_chroma, mock_get_pdfs):
         result = handle_existing_vectorstore(MagicMock())
         assert result == mock_vectorstore
         mock_update.assert_called_once()
+
+
 

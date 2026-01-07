@@ -138,7 +138,7 @@ def test_create_app(
     assert app == mock_components["demo"]
     mock_initialize.assert_called_once()
     mock_create_components.assert_called_once()
-    mock_create_stream.assert_called_once_with(mock_qa_chain)
+    mock_create_stream.assert_called_once_with(mock_qa_chain, ["test1.pdf", "test2.pdf"])
     mock_create_respond.assert_called_once_with(mock_stream_fn)
 
     # Check event handlers were attached

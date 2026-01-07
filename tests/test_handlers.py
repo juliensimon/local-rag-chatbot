@@ -103,7 +103,8 @@ def test_create_stream_chat_response_with_filter(mock_vectorstore):
         }
     ]
 
-    stream_fn = create_stream_chat_response(mock_qa_chain)
+    # Pass available_sources to allow the filter to be validated
+    stream_fn = create_stream_chat_response(mock_qa_chain, available_sources=["test.pdf"])
     list(
         stream_fn(
             "test question",
@@ -114,7 +115,7 @@ def test_create_stream_chat_response_with_filter(mock_vectorstore):
         )
     )
 
-    # Check that filter was passed
+    # Check that filter was passed (only works with valid source)
     call_args = mock_qa_chain.stream.call_args[0][0]
     assert "filter" in call_args
 

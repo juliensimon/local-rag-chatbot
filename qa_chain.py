@@ -1,9 +1,15 @@
 """Question-answering chain with RAG capabilities."""
 
+import logging
 import os
 
 from langchain_core.prompts import ChatPromptTemplate
 from sentence_transformers import CrossEncoder
+
+logger = logging.getLogger(__name__)
+
+# Sentinel to indicate reranker load failed (prevent retry loop)
+_RERANKER_LOAD_FAILED = object()
 
 from config import (
     HYBRID_ALPHA_DEFAULT,
@@ -62,8 +68,11 @@ class QAChainWrapper:
 
                 self._reranker = CrossEncoder(RERANKER_MODEL)
             except Exception as e:
-                print(f"Warning: Could not load cross-encoder: {e}")
-                self._reranker = None
+                logger.warning(f"Could not load cross-encoder: {e}")
+                self._reranker = _RERANKER_LOAD_FAILED
+
+        if self._reranker is _RERANKER_LOAD_FAILED:
+            return None
         return self._reranker
 
     def rewrite_query(self, question, chat_history=None):

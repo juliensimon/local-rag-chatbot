@@ -53,7 +53,8 @@ def test_get_reranker_failure(mock_cross_encoder, qa_chain_wrapper):
 
     result = qa_chain_wrapper._get_reranker()
     assert result is None
-    assert qa_chain_wrapper._reranker is None
+    # _reranker is set to sentinel _RERANKER_LOAD_FAILED, not None
+    assert qa_chain_wrapper._reranker is not None
 
 
 @patch("qa_chain.create_llm")

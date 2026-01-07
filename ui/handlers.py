@@ -4,22 +4,42 @@ import os
 
 import gradio as gr
 
-from config import PDF_PATH
+from config import MAX_QUERY_LENGTH, PDF_PATH
 from models import create_llm
 from qa_chain import QAChainWrapper
 from utils import format_context_with_highlight, messages_to_tuples
 from langchain_core.messages import HumanMessage, SystemMessage
 
 
-def create_stream_chat_response(qa_chain: QAChainWrapper):
+def validate_doc_filter(doc_filter, available_sources):
+    """Validate document filter against allowed sources to prevent path traversal.
+
+    Args:
+        doc_filter: User-provided document filter value
+        available_sources: Set/list of valid source filenames
+
+    Returns:
+        Full path if valid, None otherwise
+    """
+    if not doc_filter or doc_filter == "All Documents":
+        return None
+    # Only allow filenames that exist in our indexed sources
+    if doc_filter not in available_sources:
+        return None  # Invalid filter, ignore
+    return os.path.join(PDF_PATH, doc_filter)
+
+
+def create_stream_chat_response(qa_chain: QAChainWrapper, available_sources=None):
     """Create a stream_chat_response function bound to the QA chain.
 
     Args:
         qa_chain: QAChainWrapper instance
+        available_sources: List of valid document source filenames
 
     Returns:
         Function that streams chat responses
     """
+    sources_set = set(available_sources) if available_sources else set()
 
     def stream_chat_response(
         message,
@@ -55,12 +75,11 @@ def create_stream_chat_response(qa_chain: QAChainWrapper):
         hybrid_scores = None
 
         if query_type == "RAG":
-            # Build filter if document is selected
+            # Build filter if document is selected (with path traversal protection)
             metadata_filter = None
-            if doc_filter and doc_filter != "All Documents":
-                # Construct full path for exact match (ChromaDB doesn't support $contains)
-                full_source_path = os.path.join(PDF_PATH, doc_filter)
-                metadata_filter = {"source": {"$eq": full_source_path}}
+            validated_path = validate_doc_filter(doc_filter, sources_set)
+            if validated_path:
+                metadata_filter = {"source": {"$eq": validated_path}}
 
             stream_input = {
                 "question": message,
@@ -143,9 +162,13 @@ def create_respond_handler(stream_chat_response_fn):
         Yields:
             tuple: (cleared_msg, history, context, rag_state, doc_filter)
         """
-        if not message:
+        if not message or not message.strip():
             yield "", chat_history, "", is_rag_enabled, selected_doc
             return
+
+        # Truncate extremely long inputs to prevent resource exhaustion
+        if len(message) > MAX_QUERY_LENGTH:
+            message = message[:MAX_QUERY_LENGTH]
 
         query_type = "RAG" if is_rag_enabled else "Vanilla LLM"
         new_history = list(chat_history)

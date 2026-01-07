@@ -59,14 +59,13 @@ def test_empty_whitespace_query():
     results = list(respond_fn("", [], False, "mmr", "All Documents", False, False, 70))
     assert results[0][0] == ""  # Should return empty immediately
 
-    # Whitespace only
+    # Whitespace only - now also returns empty (treated as empty after strip)
     results = list(respond_fn("   ", [], False, "mmr", "All Documents", False, False, 70))
-    # Should process (whitespace is not empty in Python)
-    assert len(results) > 0
+    assert results[0][0] == ""  # Should return empty immediately
 
-    # Newlines only
+    # Newlines only - also returns empty
     results = list(respond_fn("\n\n\n", [], False, "mmr", "All Documents", False, False, 70))
-    assert len(results) > 0
+    assert results[0][0] == ""  # Should return empty immediately
 
 
 @patch("qa_chain.create_llm")
@@ -146,24 +145,25 @@ def test_invalid_document_filter():
         }
     ]
 
-    stream_fn = create_stream_chat_response(mock_qa_chain)
+    # Pass valid sources - nonexistent.pdf is NOT in the list
+    stream_fn = create_stream_chat_response(mock_qa_chain, available_sources=["valid.pdf"])
 
-    # Invalid filter (document that doesn't exist)
+    # Invalid filter (document that doesn't exist in available_sources)
     results = list(
         stream_fn(
             "test question",
             [],
             "RAG",
-            doc_filter="nonexistent.pdf",  # Invalid filter
+            doc_filter="nonexistent.pdf",  # Invalid filter - not in available_sources
             search_type="mmr",
         )
     )
 
     # Should handle invalid filter gracefully
     assert len(results) > 0
-    # Filter should still be passed to chain (it handles the filtering)
+    # Invalid filter should be ignored (no filter passed to chain)
     call_args = mock_qa_chain.stream.call_args[0][0]
-    assert "filter" in call_args
+    assert "filter" not in call_args  # Filter is NOT passed for invalid sources
 
 
 def test_malformed_chat_history():

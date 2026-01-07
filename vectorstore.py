@@ -2,7 +2,6 @@
 
 import glob
 import os
-import sys
 
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
@@ -95,8 +94,7 @@ def handle_existing_vectorstore(embeddings):
 
     current_pdfs = get_pdf_files()
     if not current_pdfs:
-        print("No PDF files found in directory.")
-        sys.exit(1)
+        raise FileNotFoundError("No PDF files found in directory.")
 
     collection = vectorstore.get()
     if not collection or not collection.get("metadatas"):
@@ -154,9 +152,10 @@ def create_new_vectorstore(embeddings):
     print("Creating new Chroma database...")
     pdf_files = get_pdf_files()
     if not pdf_files:
-        print(f"No PDF files found in '{PDF_PATH}' directory!")
-        print(f"Please add your PDF files to the '{PDF_PATH}' directory and run again.")
-        sys.exit(1)
+        raise FileNotFoundError(
+            f"No PDF files found in '{PDF_PATH}' directory. "
+            f"Please add PDF files and run again."
+        )
 
     print(f"Found {len(pdf_files)} PDF files to process...")
     print("(This may take a while as documents need to be processed and embedded)")

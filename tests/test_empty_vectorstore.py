@@ -178,7 +178,7 @@ def test_create_new_vectorstore_no_pdfs(mock_get_pdfs, mock_chroma):
 
     mock_get_pdfs.return_value = []  # No PDF files
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(FileNotFoundError):
         create_new_vectorstore(MagicMock())
 
 

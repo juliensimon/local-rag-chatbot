@@ -55,7 +55,7 @@ def create_app():
     demo = components["demo"]
 
     # Create handlers
-    stream_chat_response_fn = create_stream_chat_response(qa_chain)
+    stream_chat_response_fn = create_stream_chat_response(qa_chain, available_sources)
     respond_fn = create_respond_handler(stream_chat_response_fn)
 
     # Event handlers - must be within Blocks context
@@ -136,5 +136,6 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
+    app.queue(max_size=20, default_concurrency_limit=2)
     app.launch(share=False, server_port=7860)
 

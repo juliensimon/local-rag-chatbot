@@ -4,9 +4,13 @@ langchain-huggingface>=0.1.0
 langchain-chroma>=0.1.0
 langchain-text-splitters>=0.3.0
 langchain-community>=0.3.0
-sentence-transformers
+sentence-transformers>=2.2.0
 torch
 transformers
 chromadb
 pypdf
 gradio>=5.0.0
+rank-bm25>=0.2.2
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0

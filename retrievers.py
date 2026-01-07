@@ -1,8 +1,11 @@
 """Retrieval strategies for document search."""
 
+import logging
 import re
 
 from langchain_core.documents import Document
+
+logger = logging.getLogger(__name__)
 from rank_bm25 import BM25Okapi
 
 from config import (
@@ -117,7 +120,8 @@ class HybridRetriever:
             semantic_docs = self._vectorstore.similarity_search_with_score(
                 query, k=semantic_k, filter=metadata_filter if metadata_filter else None
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Semantic search failed, falling back to keyword only: {e}")
             semantic_docs = []
 
         # Keyword search (BM25)
@@ -157,6 +161,9 @@ class HybridRetriever:
             semantic_score = 1.0 / (1.0 + distance) if distance >= 0 else 1.0
             doc_scores[key] = {"doc": doc, "semantic": semantic_score, "keyword": 0.0}
 
+        # Build lookup set for O(1) matching instead of O(n*m)
+        semantic_keys = {doc_key(doc) for doc, _ in semantic_docs}
+
         # Add keyword scores - match BM25 documents with semantic documents
         # Only include documents that match the filter
         for i, bm25_doc in enumerate(self._documents):
@@ -165,36 +172,26 @@ class HybridRetriever:
                 continue
 
             key = doc_key(bm25_doc)
-            if key not in doc_scores:
-                # Check if this BM25 doc matches any semantic doc by content
-                matched = False
-                for sem_doc, _ in semantic_docs:
-                    if (
-                        bm25_doc.page_content[:100] == sem_doc.page_content[:100]
-                        and bm25_doc.metadata.get("page") == sem_doc.metadata.get("page")
-                        and bm25_doc.metadata.get("source")
-                        == sem_doc.metadata.get("source")
-                    ):
-                        # Found a match - add keyword score to existing entry
-                        sem_key = doc_key(sem_doc)
-                        if sem_key in doc_scores:
-                            doc_scores[sem_key]["keyword"] = (
-                                bm25_scores[i] if i < len(bm25_scores) else 0.0
-                            )
-                        matched = True
-                        break
-                if not matched:
-                    # New document from BM25 only (but matches filter)
-                    doc_scores[key] = {
-                        "doc": bm25_doc,
-                        "semantic": 0.0,
-                        "keyword": bm25_scores[i] if i < len(bm25_scores) else 0.0,
-                    }
-            else:
+            keyword_score = bm25_scores[i] if i < len(bm25_scores) else 0.0
+
+            if key in doc_scores:
                 # Update keyword score for existing entry
-                doc_scores[key]["keyword"] = (
-                    bm25_scores[i] if i < len(bm25_scores) else 0.0
-                )
+                doc_scores[key]["keyword"] = keyword_score
+            elif key in semantic_keys:
+                # Match found in semantic results - should already be in doc_scores
+                # This handles edge case of key mismatch
+                doc_scores[key] = {
+                    "doc": bm25_doc,
+                    "semantic": 0.0,
+                    "keyword": keyword_score,
+                }
+            else:
+                # New document from BM25 only (but matches filter)
+                doc_scores[key] = {
+                    "doc": bm25_doc,
+                    "semantic": 0.0,
+                    "keyword": keyword_score,
+                }
 
         # Fuse scores
         fused_results = []
