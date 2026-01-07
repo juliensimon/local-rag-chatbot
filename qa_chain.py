@@ -1,5 +1,7 @@
 """Question-answering chain with RAG capabilities."""
 
+import os
+
 from langchain_core.prompts import ChatPromptTemplate
 from sentence_transformers import CrossEncoder
 
@@ -291,7 +293,42 @@ Rewritten query (keywords and key phrases only, be concise):"""
         docs = docs[:RETRIEVER_K]
         docs_with_scores = docs_with_scores[:RETRIEVER_K]
 
-        context = "\n\n".join(doc.page_content for doc in docs)
+        # Identify top chunk for emphasis
+        top_chunk_idx = 0
+        if docs_with_scores and len(docs_with_scores) > 0:
+            best_score = float("-inf")
+            for i, (doc, score) in enumerate(docs_with_scores):
+                if score is not None:
+                    # Handle both similarity scores (higher is better, <= 1.0) 
+                    # and distance scores (lower is better, > 1.0)
+                    if score <= 1.0:
+                        if score > best_score:
+                            best_score = score
+                            top_chunk_idx = i
+                    else:
+                        # For distance scores, lower is better
+                        if -score > best_score:
+                            best_score = -score
+                            top_chunk_idx = i
+
+        # Format context with emphasis on top chunk and contextual headers
+        context_parts = []
+        for i, doc in enumerate(docs):
+            # Add contextual header with source and page info
+            source = doc.metadata.get("source", "Unknown")
+            source_name = os.path.basename(source) if source != "Unknown" else "Unknown"
+            page = doc.metadata.get("page", "unknown")
+            header = f"[Document: {source_name}, Page: {page}]"
+            
+            # Emphasize top chunk explicitly
+            if i == top_chunk_idx:
+                content = f"{header}\n\n[MOST RELEVANT CONTEXT]\n{doc.page_content}\n[/MOST RELEVANT CONTEXT]"
+            else:
+                content = f"{header}\n\n{doc.page_content}"
+            
+            context_parts.append(content)
+        
+        context = "\n\n---\n\n".join(context_parts)
 
         # Format chat history
         history_str = format_chat_history(chat_history)
