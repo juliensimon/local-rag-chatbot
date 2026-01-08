@@ -34,6 +34,16 @@ This application provides an interactive chat interface that allows users to ask
 - ChromaDB for vector storage
 - Supports PDF document processing
 
+## Local LLM Setup with llama.cpp
+
+This application uses a local llama-server with an OpenAI-compatible API. To run it with the Trinity-Mini Q8 model:
+
+```bash
+llama-server -hf arcee-ai/Trinity-Mini-GGUF:Q8_0
+```
+
+This will automatically download the Q8 quantized model (~27.8 GB) from [Hugging Face](https://huggingface.co/arcee-ai/Trinity-Mini-GGUF) and start the server.
+
 ## Included Documents
 The `pdf` directory contains IEA (International Energy Agency) reports and publications covering topics such as:
 
