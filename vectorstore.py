@@ -116,6 +116,21 @@ def handle_existing_vectorstore(embeddings):
     return vectorstore
 
 
+def add_documents_in_batches(vectorstore, documents, batch_size=5000):
+    """Add documents to vectorstore in batches to avoid exceeding ChromaDB limits.
+
+    Args:
+        vectorstore: Chroma vectorstore instance
+        documents: List of documents to add
+        batch_size: Maximum documents per batch (ChromaDB limit is 5461)
+    """
+    total = len(documents)
+    for i in range(0, total, batch_size):
+        batch = documents[i : i + batch_size]
+        print(f"Adding batch {i // batch_size + 1}/{(total + batch_size - 1) // batch_size} ({len(batch)} documents)...")
+        vectorstore.add_documents(batch)
+
+
 def update_vectorstore(vectorstore, new_pdfs, processed_files):
     """Update existing vectorstore with new documents.
 
@@ -133,8 +148,8 @@ def update_vectorstore(vectorstore, new_pdfs, processed_files):
 
     filtered_chunks = process_documents(new_documents, get_text_splitter())
     if filtered_chunks:
-        print("Adding new documents to existing database...")
-        vectorstore.add_documents(filtered_chunks)
+        print(f"Adding {len(filtered_chunks)} new document chunks to existing database...")
+        add_documents_in_batches(vectorstore, filtered_chunks)
         print("Database updated successfully!")
 
 
