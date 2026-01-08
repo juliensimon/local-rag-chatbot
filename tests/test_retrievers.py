@@ -137,3 +137,5 @@ def test_hybrid_search_semantic_error(mock_vectorstore, sample_documents):
     # Should still return results from BM25
     assert isinstance(results, list)
 
+
+

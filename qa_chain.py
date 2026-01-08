@@ -103,7 +103,7 @@ Rewritten query (keywords and key phrases only, be concise):"""
 
             return rewritten
         except Exception as e:
-            print(f"Query rewriting failed: {e}")
+            logger.warning(f"Query rewriting failed: {e}")
             return question
 
     def rerank_documents(self, query, documents, top_k=RETRIEVER_K):
@@ -138,7 +138,7 @@ Rewritten query (keywords and key phrases only, be concise):"""
 
             return [(doc, score) for doc, score in scored_docs[:top_k]]
         except Exception as e:
-            print(f"Re-ranking failed: {e}")
+            logger.warning(f"Re-ranking failed: {e}")
             # Fall back to original order
             return [(doc, None) for doc in documents[:top_k]]
 
@@ -363,8 +363,9 @@ Rewritten query (keywords and key phrases only, be concise):"""
                     "hybrid_scores": hybrid_scores,
                 }
         except Exception as e:
+            logger.error(f"Stream error: {e}")
             yield {
-                "chunk": f"\n\n[Error: {e}]",
+                "chunk": "\n\n[An error occurred. Please try again.]",
                 "source_documents": docs,
                 "docs_with_scores": docs_with_scores,
                 "rewritten_query": rewritten_query,

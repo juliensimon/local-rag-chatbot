@@ -54,3 +54,5 @@ def test_environment_variables():
     assert isinstance(os.getenv("CHROMA_PATH", "vectorstore"), str)
     assert isinstance(os.getenv("PDF_PATH", "pdf"), str)
 
+
+

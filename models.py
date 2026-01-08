@@ -41,3 +41,5 @@ def create_embeddings():
         encode_kwargs={"normalize_embeddings": True},
     )
 
+
+

@@ -64,3 +64,5 @@ def test_stream_similarity_exact_match(mock_format_history, mock_create_llm, qa_
     # Verify that the matching logic was executed (lines 269-274)
     assert results[0].get("docs_with_scores") is not None
 
+
+

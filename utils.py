@@ -143,3 +143,5 @@ def format_context_with_highlight(
 
     return query_info + sources_header + "\n\n".join(formatted_chunks)
 
+
+

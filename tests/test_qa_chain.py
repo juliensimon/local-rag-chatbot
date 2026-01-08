@@ -241,7 +241,7 @@ def test_stream_error(mock_format_history, mock_create_llm, qa_chain_wrapper, mo
 
     results = list(qa_chain_wrapper.stream(inputs))
     assert len(results) > 0
-    assert "Error" in results[0]["chunk"]
+    assert "error occurred" in results[0]["chunk"]
 
 
 def test_create_qa_chain(mock_vectorstore):

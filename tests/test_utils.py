@@ -131,3 +131,5 @@ def test_format_context_with_hybrid_scores(sample_documents):
     assert "s:" in result  # Semantic score
     assert "k:" in result  # Keyword score
 
+
+

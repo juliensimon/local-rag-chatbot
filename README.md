@@ -34,20 +34,15 @@ This application provides an interactive chat interface that allows users to ask
 - ChromaDB for vector storage
 - Supports PDF document processing
 
-## Included Papers
-The following research papers are included in the `pdf` directory:
+## Included Documents
+The `pdf` directory contains IEA (International Energy Agency) reports and publications covering topics such as:
 
-- [arXiv:2306.13649v3](https://arxiv.org/abs/2306.13649)
-- [arXiv:2309.16609v1](https://arxiv.org/abs/2309.16609)
-- [arXiv:2312.06795v1](https://arxiv.org/abs/2312.06795)
-- [arXiv:2403.19522v1](https://arxiv.org/abs/2403.19522)
-- [arXiv:2405.04434v5](https://arxiv.org/abs/2405.04434)
-- [arXiv:2406.11617v1](https://arxiv.org/abs/2406.11617)
-- [arXiv:2410.21228v1](https://arxiv.org/abs/2410.21228)
-- [arXiv:2411.05059v2](https://arxiv.org/abs/2411.05059)
-- [arXiv:2501.09223v1](https://arxiv.org/abs/2501.09223)
-- [arXiv:2501.12948v1](https://arxiv.org/abs/2501.12948)
-- [arXiv:2503.04872v1](https://arxiv.org/abs/2503.04872)
+- Clean energy transitions and net zero pathways
+- Renewable energy capacity and projections
+- Electric vehicles and battery technologies
+- Carbon capture, utilisation and storage (CCUS)
+- Energy efficiency and critical minerals
+- Regional energy profiles and policy recommendations
 
 ## Deployment
 This application is hosted as a Hugging Face Space. Configuration details can be found in the [spaces config reference](https://huggingface.co/docs/hub/spaces-config-reference).

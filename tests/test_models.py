@@ -43,3 +43,5 @@ def test_create_embeddings(mock_embeddings):
     assert call_kwargs["encode_kwargs"]["normalize_embeddings"] is True
     assert result == mock_instance
 
+
+

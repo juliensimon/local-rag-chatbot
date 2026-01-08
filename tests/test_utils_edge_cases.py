@@ -43,3 +43,5 @@ def test_format_context_no_scores():
     assert "Test content" in result
     assert "⭐" in result  # First chunk should be highlighted by default
 
+
+

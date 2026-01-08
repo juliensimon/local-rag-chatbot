@@ -215,3 +215,5 @@ def test_cli_main_rag_error(
     captured = capsys.readouterr()
     assert "Error" in captured.out
 
+
+
