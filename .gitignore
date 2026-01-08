@@ -34,6 +34,9 @@ Thumbs.db
 # Project specific
 vectorstore/
 *.log
+pdf_energy/
+pdf_research/
+pdf
 
 
 
