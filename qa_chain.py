@@ -1,7 +1,6 @@
 """Question-answering chain with RAG capabilities."""
 
 import logging
-import os
 
 from langchain_core.prompts import ChatPromptTemplate
 from sentence_transformers import CrossEncoder
@@ -22,7 +21,7 @@ from config import (
 )
 from models import create_llm
 from retrievers import HybridRetriever
-from utils import format_chat_history
+from utils import format_chat_history, get_document_source, get_top_chunk_index
 
 
 class QAChainWrapper:
@@ -303,29 +302,13 @@ Rewritten query (keywords and key phrases only, be concise):"""
         docs_with_scores = docs_with_scores[:RETRIEVER_K]
 
         # Identify top chunk for emphasis
-        top_chunk_idx = 0
-        if docs_with_scores and len(docs_with_scores) > 0:
-            best_score = float("-inf")
-            for i, (doc, score) in enumerate(docs_with_scores):
-                if score is not None:
-                    # Handle both similarity scores (higher is better, <= 1.0) 
-                    # and distance scores (lower is better, > 1.0)
-                    if score <= 1.0:
-                        if score > best_score:
-                            best_score = score
-                            top_chunk_idx = i
-                    else:
-                        # For distance scores, lower is better
-                        if -score > best_score:
-                            best_score = -score
-                            top_chunk_idx = i
+        top_chunk_idx = get_top_chunk_index(docs_with_scores)
 
         # Format context with emphasis on top chunk and contextual headers
         context_parts = []
         for i, doc in enumerate(docs):
             # Add contextual header with source and page info
-            source = doc.metadata.get("source", "Unknown")
-            source_name = os.path.basename(source) if source != "Unknown" else "Unknown"
+            source_name = get_document_source(doc)
             page = doc.metadata.get("page", "unknown")
             header = f"[Document: {source_name}, Page: {page}]"
             

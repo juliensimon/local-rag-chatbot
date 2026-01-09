@@ -94,6 +94,22 @@ class HybridRetriever:
                     return False
         return True
 
+    def _normalize_scores(self, scores):
+        """Normalize scores to 0-1 range using min-max scaling.
+
+        Args:
+            scores: List or array of raw scores
+
+        Returns:
+            List of normalized scores (0-1 range)
+        """
+        if len(scores) == 0:
+            return []
+        min_s, max_s = min(scores), max(scores)
+        if max_s == min_s:
+            return [0.0] * len(scores)
+        return [(s - min_s) / (max_s - min_s) for s in scores]
+
     def hybrid_search(
         self, query, k=RETRIEVER_K, alpha=HYBRID_ALPHA_DEFAULT, metadata_filter=None
     ):
@@ -132,17 +148,7 @@ class HybridRetriever:
             bm25_scores = [0.0] * len(self._documents)
 
         # Normalize BM25 scores to 0-1 range
-        if len(bm25_scores) > 0 and max(bm25_scores) > 0:
-            min_score = min(bm25_scores)
-            max_score = max(bm25_scores)
-            if max_score > min_score:
-                bm25_scores = [
-                    (s - min_score) / (max_score - min_score) for s in bm25_scores
-                ]
-            else:
-                bm25_scores = [0.0] * len(bm25_scores)
-        else:
-            bm25_scores = [0.0] * len(self._documents)
+        bm25_scores = self._normalize_scores(bm25_scores)
 
         # Create document score map (match by content and metadata, not object ID)
         doc_scores = {}
@@ -161,9 +167,6 @@ class HybridRetriever:
             semantic_score = 1.0 / (1.0 + distance) if distance >= 0 else 1.0
             doc_scores[key] = {"doc": doc, "semantic": semantic_score, "keyword": 0.0}
 
-        # Build lookup set for O(1) matching instead of O(n*m)
-        semantic_keys = {doc_key(doc) for doc, _ in semantic_docs}
-
         # Add keyword scores - match BM25 documents with semantic documents
         # Only include documents that match the filter
         for i, bm25_doc in enumerate(self._documents):
@@ -174,24 +177,10 @@ class HybridRetriever:
             key = doc_key(bm25_doc)
             keyword_score = bm25_scores[i] if i < len(bm25_scores) else 0.0
 
-            if key in doc_scores:
-                # Update keyword score for existing entry
-                doc_scores[key]["keyword"] = keyword_score
-            elif key in semantic_keys:
-                # Match found in semantic results - should already be in doc_scores
-                # This handles edge case of key mismatch
-                doc_scores[key] = {
-                    "doc": bm25_doc,
-                    "semantic": 0.0,
-                    "keyword": keyword_score,
-                }
-            else:
-                # New document from BM25 only (but matches filter)
-                doc_scores[key] = {
-                    "doc": bm25_doc,
-                    "semantic": 0.0,
-                    "keyword": keyword_score,
-                }
+            if key not in doc_scores:
+                # New document from BM25 (not found in semantic results)
+                doc_scores[key] = {"doc": bm25_doc, "semantic": 0.0, "keyword": 0.0}
+            doc_scores[key]["keyword"] = keyword_score
 
         # Fuse scores
         fused_results = []

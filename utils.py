@@ -6,6 +6,42 @@ from langchain_core.messages import AIMessage, HumanMessage
 from config import CHAT_HISTORY_LIMIT
 
 
+def get_document_source(doc):
+    """Extract source filename from document metadata.
+
+    Args:
+        doc: Document object with metadata
+
+    Returns:
+        str: Source filename or "Unknown"
+    """
+    return os.path.basename(doc.metadata.get("source", "Unknown"))
+
+
+def get_top_chunk_index(docs_with_scores):
+    """Find index of best-scoring document.
+
+    Handles both similarity scores (higher is better, <=1.0)
+    and distance scores (lower is better, >1.0).
+
+    Args:
+        docs_with_scores: List of (doc, score) tuples
+
+    Returns:
+        int: Index of best-scoring document, or 0 if empty/no scores
+    """
+    if not docs_with_scores:
+        return 0
+    best_idx, best_score = 0, float("-inf")
+    for i, (_, score) in enumerate(docs_with_scores):
+        if score is None:
+            continue
+        normalized = score if score <= 1.0 else -score
+        if normalized > best_score:
+            best_score, best_idx = normalized, i
+    return best_idx
+
+
 def format_chat_history(chat_history, limit=CHAT_HISTORY_LIMIT):
     """Format chat history for inclusion in prompts.
 
@@ -84,7 +120,7 @@ def format_context_with_highlight(
     seen_sources = set()
     sources_list = []
     for doc in source_documents:
-        source = os.path.basename(doc.metadata.get("source", "Unknown"))
+        source = get_document_source(doc)
         page = doc.metadata.get("page", "unknown")
         source_key = f"{source}:{page}"
         if source_key not in seen_sources:
@@ -92,19 +128,7 @@ def format_context_with_highlight(
             seen_sources.add(source_key)
 
     # Identify top chunk
-    top_chunk_idx = 0
-    if docs_with_scores and len(docs_with_scores) > 0:
-        best_score = float("-inf")
-        for i, (doc, score) in enumerate(docs_with_scores):
-            if score is not None:
-                if score <= 1.0:
-                    if score > best_score:
-                        best_score = score
-                        top_chunk_idx = i
-                else:
-                    if -score > best_score:
-                        best_score = -score
-                        top_chunk_idx = i
+    top_chunk_idx = get_top_chunk_index(docs_with_scores)
 
     # Compact sources header
     sources_header = f"**Sources:** {', '.join(sources_list)}\n\n---\n\n"
@@ -112,7 +136,7 @@ def format_context_with_highlight(
     # Format chunks more compactly
     formatted_chunks = []
     for i, doc in enumerate(source_documents):
-        source = os.path.basename(doc.metadata.get("source", "Unknown"))
+        source = get_document_source(doc)
         page = doc.metadata.get("page", "unknown")
         content = doc.page_content
 

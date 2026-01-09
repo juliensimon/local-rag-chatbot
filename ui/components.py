@@ -2,6 +2,8 @@
 
 import gradio as gr
 
+from config import HYBRID_ALPHA_UI_DEFAULT
+
 # Modern, clean CSS styling
 CUSTOM_CSS = """
 .generating {
@@ -154,7 +156,7 @@ def create_ui_components(available_sources):
                 hybrid_alpha = gr.Slider(
                     minimum=0,
                     maximum=100,
-                    value=70,
+                    value=HYBRID_ALPHA_UI_DEFAULT,
                     step=5,
                     label="Hybrid Balance",
                     info="",

@@ -24,6 +24,7 @@ CHAT_HISTORY_LIMIT = 5  # Number of recent messages to include in context
 
 # Advanced RAG configuration
 HYBRID_ALPHA_DEFAULT = 0.7  # 70% semantic, 30% keyword
+HYBRID_ALPHA_UI_DEFAULT = int(HYBRID_ALPHA_DEFAULT * 100)  # For UI slider (0-100)
 HYBRID_INITIAL_K = 20  # Retrieve more candidates for hybrid
 RERANK_INITIAL_K = 20  # Retrieve more candidates before re-ranking
 RERANK_TOP_K = RETRIEVER_K  # Final number after re-ranking

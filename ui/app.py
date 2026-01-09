@@ -2,6 +2,7 @@
 
 import os
 
+from config import HYBRID_ALPHA_UI_DEFAULT
 from models import create_embeddings
 from qa_chain import create_qa_chain
 from vectorstore import load_or_create_vectorstore
@@ -101,7 +102,7 @@ def create_app():
             ],
         )
         components["clear"].click(
-            lambda: [[], "", False, "mmr", "All Documents", False, False, 70],
+            lambda: [[], "", False, "mmr", "All Documents", False, False, HYBRID_ALPHA_UI_DEFAULT],
             None,
             [
                 components["chatbot"],

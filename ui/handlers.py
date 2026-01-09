@@ -238,19 +238,8 @@ def update_rag_controls(is_rag_enabled):
     Returns:
         Tuple of gr.update() calls for visibility
     """
-    if is_rag_enabled:
-        return (
-            gr.update(visible=True),
-            gr.update(visible=True),
-            gr.update(visible=True),
-            gr.update(visible=True),
-        )
-    return (
-        gr.update(visible=False),
-        gr.update(visible=False),
-        gr.update(visible=False),
-        gr.update(visible=False),
-    )
+    update = gr.update(visible=is_rag_enabled)
+    return (update, update, update, update)
 
 
 def update_hybrid_alpha_visibility(search_type_choice):
