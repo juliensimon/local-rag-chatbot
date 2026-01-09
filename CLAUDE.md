@@ -50,6 +50,12 @@ This is a RAG (Retrieval-Augmented Generation) chatbot built with LangChain and 
 
 - **`ui/handlers.py`**: Streaming response handlers, path traversal protection for document filters, message format conversion
 
+### Gradio 6.0 API Notes
+This project uses Gradio 6.0+. Key API differences from earlier versions:
+- `css` and `theme` parameters go in `launch()`, not `gr.Blocks()`
+- `gr.Chatbot` uses messages format by default (no `type` parameter)
+- `gr.Chatbot` does not support `show_copy_button` parameter
+
 ### Search Type Implementation Details
 - **MMR**: Uses `lambda_mult` (0.7 default) to balance relevance vs diversity
 - **Hybrid**: BM25 scores normalized to 0-1, fused with semantic via `alpha` weight

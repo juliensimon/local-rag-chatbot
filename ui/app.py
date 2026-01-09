@@ -2,12 +2,14 @@
 
 import os
 
+import gradio as gr
+
 from config import HYBRID_ALPHA_UI_DEFAULT
 from models import create_embeddings
 from qa_chain import create_qa_chain
 from vectorstore import load_or_create_vectorstore
 
-from .components import create_ui_components
+from .components import CUSTOM_CSS, create_ui_components
 from .handlers import (
     create_respond_handler,
     create_stream_chat_response,
@@ -138,5 +140,5 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
     app.queue(max_size=20, default_concurrency_limit=2)
-    app.launch(share=False, server_port=7860)
+    app.launch(share=False, server_port=7860, css=CUSTOM_CSS, theme=gr.themes.Soft())
 

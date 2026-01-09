@@ -101,7 +101,7 @@ def create_ui_components(available_sources):
     Returns:
         dict: Dictionary containing all UI components
     """
-    with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as demo:
+    with gr.Blocks() as demo:
         # Clean header
         gr.Markdown("# 📚 Document Q&A")
         gr.Markdown(
@@ -166,9 +166,7 @@ def create_ui_components(available_sources):
 
         # Chat interface - main focus
         chatbot = gr.Chatbot(
-            type="messages",
             height=500,
-            show_copy_button=True,
         )
 
         # Context panel - cleaner, shown below chatbot when RAG is enabled
