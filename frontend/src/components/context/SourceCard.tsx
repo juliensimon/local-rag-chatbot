@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Star, FileText, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SourceDocument } from '@/types/api'
+import { Markdown } from '@/components/ui/markdown'
 
 interface SourceCardProps {
   source: SourceDocument
@@ -84,9 +85,10 @@ export function SourceCard({ source, searchType }: SourceCardProps) {
       </CardHeader>
 
       <CardContent className="pt-0">
-        <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-          {displayContent}
-        </p>
+        <Markdown
+          content={displayContent}
+          className="text-muted-foreground"
+        />
 
         <div className="mt-2 flex items-center gap-2">
           {needsTruncation && (

@@ -5,6 +5,7 @@
 import { cn } from '@/lib/utils'
 import type { Message } from '@/types/api'
 import { User, Bot } from 'lucide-react'
+import { Markdown } from '@/components/ui/markdown'
 
 interface ChatMessageProps {
   message: Message
@@ -50,13 +51,16 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
               : 'bg-muted text-foreground'
           )}
         >
-          {/* Simple text rendering - could add markdown support later */}
-          <div className="whitespace-pre-wrap break-words">
-            {message.content}
-            {isStreaming && (
-              <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-current" />
-            )}
-          </div>
+          {isUser ? (
+            <div className="whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
+          ) : (
+            <Markdown content={message.content} />
+          )}
+          {isStreaming && (
+            <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-current" />
+          )}
         </div>
       </div>
     </div>
