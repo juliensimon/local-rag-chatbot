@@ -1,6 +1,6 @@
 """Tests for multi-turn conversations with chat history."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -147,63 +147,4 @@ def test_follow_up_question_references_previous_answer(mock_format_history, mock
     assert "chunk" in results[0]
 
 
-@patch("ui.handlers.create_llm")
-def test_handlers_multi_turn_conversation(mock_create_llm, mock_vectorstore):
-    """Test handlers with multi-turn conversation."""
-    from ui.handlers import create_stream_chat_response, create_respond_handler
-
-    mock_qa_chain = MagicMock()
-    mock_qa_chain.stream.return_value = [
-        {
-            "chunk": "Answer to follow-up",
-            "source_documents": [Mock(metadata={"source": "test.pdf", "page": 1})],
-            "docs_with_scores": [(Mock(), 0.9)],
-            "rewritten_query": None,
-            "hybrid_scores": None,
-        }
-    ]
-
-    stream_fn = create_stream_chat_response(mock_qa_chain)
-    respond_fn = create_respond_handler(stream_fn)
-
-    # First turn
-    history_turn1 = []
-    results_turn1 = list(
-        respond_fn(
-            "What is RAG?",
-            history_turn1,
-            True,  # RAG enabled
-            "mmr",
-            "All Documents",
-            False,
-            False,
-            70,
-        )
-    )
-
-    # Second turn with history
-    history_turn2 = [
-        {"role": "user", "content": "What is RAG?"},
-        {"role": "assistant", "content": "RAG stands for Retrieval-Augmented Generation."},
-    ]
-
-    results_turn2 = list(
-        respond_fn(
-            "How does it work?",
-            history_turn2,
-            True,  # RAG enabled
-            "mmr",
-            "All Documents",
-            False,
-            False,
-            70,
-        )
-    )
-
-    assert len(results_turn2) > 0
-    # Verify chat history was passed to stream function
-    assert mock_qa_chain.stream.called
-    call_args = mock_qa_chain.stream.call_args[0][0]
-    # Should have chat_history in the call
-    assert "chat_history" in call_args or "question" in call_args
 

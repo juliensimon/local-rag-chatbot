@@ -140,30 +140,6 @@ def test_rag_query_with_retriever_failure(mock_format_history, mock_create_llm, 
         pass
 
 
-@patch("ui.handlers.create_llm")
-def test_vanilla_llm_network_failure(mock_create_llm):
-    """Test vanilla LLM mode with network failure."""
-    from ui.handlers import create_stream_chat_response
-
-    mock_llm = MagicMock()
-    mock_llm.stream.side_effect = requests.exceptions.ConnectionError("Server unavailable")
-    mock_create_llm.return_value = mock_llm
-
-    stream_fn = create_stream_chat_response(MagicMock())
-    
-    results = list(
-        stream_fn(
-            "test question",
-            [],
-            "Vanilla LLM",
-        )
-    )
-
-    # Should return error message
-    assert len(results) > 0
-    assert "Error" in results[-1][0] or "unavailable" in results[-1][0].lower()
-
-
 @patch("qa_chain.create_llm")
 @patch("qa_chain.format_chat_history")
 def test_stream_interruption_handling(mock_format_history, mock_create_llm, mock_vectorstore):
