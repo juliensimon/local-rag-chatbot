@@ -23,8 +23,8 @@ from config import (
 
 def test_config_constants():
     """Test that configuration constants are set."""
-    assert RETRIEVER_K == 3
-    assert RETRIEVER_FETCH_K == 10
+    assert RETRIEVER_K == 5
+    assert RETRIEVER_FETCH_K == 15
     assert MMR_LAMBDA == 0.7
     assert CHAT_HISTORY_LIMIT == 5
     assert HYBRID_ALPHA_DEFAULT == 0.7

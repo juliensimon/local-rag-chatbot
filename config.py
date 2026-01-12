@@ -17,8 +17,8 @@ MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "10000"))
 ALLOWED_SEARCH_TYPES = {"mmr", "similarity", "hybrid"}
 
 # RAG configuration
-RETRIEVER_K = 3  # Number of final documents to return
-RETRIEVER_FETCH_K = 10  # Number of candidates to fetch for MMR
+RETRIEVER_K = 5  # Number of final documents to return
+RETRIEVER_FETCH_K = 15  # Number of candidates to fetch for MMR
 MMR_LAMBDA = 0.7  # Balance between relevance (1.0) and diversity (0.0)
 CHAT_HISTORY_LIMIT = 5  # Number of recent messages to include in context
 
