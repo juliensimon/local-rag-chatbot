@@ -22,7 +22,7 @@ export function AppLayout({ children, sidebar }: AppLayoutProps) {
             {/* Sidebar (context panel) - hidden on mobile, shown on lg+ */}
             {sidebar && (
               <aside className="hidden lg:block">
-                <div className="sticky top-6">{sidebar}</div>
+                <div className="sticky top-6 max-h-[calc(100vh-4rem)]">{sidebar}</div>
               </aside>
             )}
           </div>
