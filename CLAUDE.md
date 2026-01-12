@@ -93,3 +93,24 @@ API endpoints consumed:
 - `GET /api/health` - Health check
 - `GET /api/sources` - Available documents
 - `POST /api/chat/stream` - SSE streaming chat (events: `token`, `context`, `done`, `error`)
+
+### Frontend Library Notes
+
+**react-markdown v9+**: The `className` prop was removed. Wrap `<ReactMarkdown>` in a container div and apply styles there:
+```tsx
+// Correct pattern for v9+
+<div className="prose prose-sm dark:prose-invert">
+  <ReactMarkdown>{content}</ReactMarkdown>
+</div>
+```
+
+**@tailwindcss/typography**: Provides `prose` utility class for markdown styling. Use `prose-invert` for dark mode. Custom spacing via modifiers like `prose-p:my-1`, `prose-ul:my-1`.
+
+**Tailwind CSS v3**: This project uses Tailwind v3 (not v4). The v4 PostCSS plugin moved to a separate package and has breaking changes with shadcn/ui.
+
+### Backend API Notes
+
+**numpy float serialization**: When returning scores from hybrid search, convert numpy.float32 to native Python floats for JSON serialization:
+```python
+source_doc.score = float(score) if score is not None else None
+```
