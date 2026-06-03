@@ -18,6 +18,7 @@ This application provides an interactive chat interface that allows users to ask
 - **Modern React UI**: Clean, responsive interface with real-time streaming
 - **Context Visibility**: View the retrieved document chunks used to generate responses
 - **Dark/Light Mode**: Theme support with system preference detection
+- **Persistent Memory (optional)**: mem0-backed long-term memory that recalls user facts across sessions — toggle in the UI
 
 ## Technical Details
 - **Backend**: FastAPI with LangChain for RAG pipeline
@@ -27,6 +28,7 @@ This application provides an interactive chat interface that allows users to ask
 - **Vector Store**: ChromaDB for document storage
 - **Streaming**: Server-Sent Events (SSE) for real-time responses
 - **Documents**: PDF processing with automatic chunking
+- **Memory (optional)**: mem0 self-hosted layer reusing the local LLM, embeddings, and Chroma (`MEM0_ENABLED=1`)
 
 ## Local LLM Setup with llama.cpp
 
@@ -51,6 +53,17 @@ npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
+
+## Persistent Memory (optional)
+
+The chatbot can remember facts about the user across sessions via [mem0](https://github.com/mem0ai/mem0),
+toggled with the **Memory** switch in the UI.
+
+- Enable it: set `MEM0_ENABLED=1` (off by default). Optional: `MEM0_USER_ID`, `MEM0_PATH`.
+- Fully self-hosted — mem0 reuses the same local LLM, `bge` embeddings, and a local Chroma store; nothing leaves the machine.
+- Run the LLM server with a large context (`-c 32768`) — mem0's fact-extraction prompt needs the room (it silently 400s at 8192).
+- **Reasoning models** (Qwen3, DeepSeek-R1, …): start llama-server with `--reasoning off`, or replies come back empty
+  (the app's startup probe warns you if you forget).
 
 ## Included Documents
 The `pdf` directory contains IEA (International Energy Agency) reports and publications covering topics such as:

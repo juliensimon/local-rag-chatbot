@@ -7,9 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Start local LLM server (required before running app)
 llama-server -hf arcee-ai/Trinity-Mini-GGUF:Q8_0
+#   + persistent memory (mem0): add `-c 32768` (extraction prompts are large)
+#   + reasoning models (Qwen3, DeepSeek-R1, ...): add `--reasoning off` (else replies are empty)
 
 # Run FastAPI backend
 uvicorn api.main:app --reload
+
+# ...with persistent memory enabled (optional)
+MEM0_ENABLED=1 uvicorn api.main:app --reload
 
 # Run React frontend (in separate terminal)
 cd frontend && npm run dev
@@ -46,9 +51,9 @@ This is a RAG (Retrieval-Augmented Generation) chatbot built with LangChain, Fas
 
 ### Key Components
 
-- **`config.py`**: All configurable parameters (chunk size, retrieval settings, prompt templates). Environment variables: `OPENAI_BASE_URL`, `OPENAI_MODEL`, `CHROMA_PATH`, `PDF_PATH`, `EMBEDDING_MODEL`, `RERANKER_MODEL`
+- **`config.py`**: All configurable parameters (chunk size, retrieval settings, prompt templates). Environment variables: `OPENAI_BASE_URL`, `OPENAI_MODEL`, `CHROMA_PATH`, `PDF_PATH`, `EMBEDDING_MODEL`, `RERANKER_MODEL`, `MEM0_ENABLED`, `MEM0_USER_ID`, `MEM0_PATH`
 
-- **`models.py`**: Factory functions for LLM (`ChatOpenAI` pointing to local llama-server at port 8080) and embeddings (`BAAI/bge-small-en-v1.5`)
+- **`models.py`**: Factory functions for LLM (`ChatOpenAI` pointing to local llama-server at port 8080) and embeddings (`BAAI/bge-small-en-v1.5`). Also `warn_if_reasoning_model()` — a startup probe that warns loudly if a reasoning model is running with thinking enabled (see Reasoning Models below)
 
 - **`qa_chain.py`**: `QAChainWrapper` orchestrates the RAG pipeline. The `stream()` method is the main entry point - accepts inputs dict with `question`, `chat_history`, `filter`, `search_type`, `use_query_rewriting`, `use_reranking`, and `hybrid_alpha`. Supports three search types:
   - `mmr`: Maximal Marginal Relevance for diverse results
@@ -57,7 +62,9 @@ This is a RAG (Retrieval-Augmented Generation) chatbot built with LangChain, Fas
 
 - **`retrievers.py`**: `HybridRetriever` implements BM25 keyword search and fuses scores with semantic search using configurable alpha weighting. Builds BM25 index lazily on first hybrid search.
 
-- **`vectorstore.py`**: Handles ChromaDB persistence, incremental PDF updates, and document batching to avoid ChromaDB size limits
+- **`vectorstore.py`**: Handles ChromaDB persistence, incremental PDF updates, and document batching to avoid ChromaDB size limits. `get_indexed_sources()` pages through metadata (limit/offset) to avoid chromadb's "too many SQL variables" error on large collections (tens of thousands of chunks)
+
+- **`memory.py`**: Optional self-hosted mem0 persistent-memory layer (off unless `MEM0_ENABLED=1`). `recall(message)` injects remembered user facts into the prompt before answering; `remember(user, assistant)` extracts + stores facts after. Wired into `api/routes.py` (`/chat` and `/chat/stream`), gated per-request by the `memory_enabled` field on `ChatRequest`. Reuses the local LLM + bge embeddings + a local Chroma store. Best-effort: failures are logged, never break the chat
 
 - **`api/routes.py`**: FastAPI endpoints for health, sources, and chat (streaming via SSE)
 
@@ -67,6 +74,17 @@ This is a RAG (Retrieval-Augmented Generation) chatbot built with LangChain, Fas
 - **MMR**: Uses `lambda_mult` (0.7 default) to balance relevance vs diversity. Fetches 10 candidates, returns 3.
 - **Hybrid**: BM25 scores normalized to 0-1 via min-max scaling, fused with semantic via `alpha` weight (default 0.7 = 70% semantic)
 - **Reranking**: Cross-encoder (`ms-marco-MiniLM-L-6-v2`) re-scores top 20 candidates down to 3
+
+### Persistent Memory (mem0, optional)
+- Off by default; enable with `MEM0_ENABLED=1`. Per-request toggle via the `memory_enabled` field (UI: the Memory switch).
+- `memory.py` builds a self-hosted `Memory` reusing the local LLM (`OPENAI_BASE_URL`), bge embeddings, and a local Chroma store at `MEM0_PATH`. recall-before / remember-after; injected into the RAG context (`qa_chain.py`) or the vanilla system prompt (`api/streaming.py`).
+- The LLM **must** run with a large context (`-c 32768`) — mem0's fact-extraction prompt is ~8k+ tokens and silently 400s at 8192.
+- mem0 2.0.x API: search uses `filters={"user_id": ...}` (not `user_id=`).
+- mem0's own OpenAI client has no `chat_template_kwargs`/`extra_body` passthrough, so thinking can only be disabled server-side (see below).
+
+### Reasoning Models
+- Models like Qwen3 / DeepSeek-R1 emit `reasoning_content` and leave `content` empty until thinking ends. The chat path and mem0 both read `content`, so answers come back empty/garbled. **Run llama-server with `--reasoning off`.**
+- `models.py:warn_if_reasoning_model()` probes the LLM at startup (called from `api/main.py`) and logs a loud error if thinking is still on — turning a silent failure into one actionable line.
 
 ### Testing
 Tests extensively mock LLMs and vectorstores. Coverage enforced at 80% minimum via pytest config. Key fixtures in `tests/conftest.py`: `mock_embeddings`, `mock_vectorstore`, `mock_llm`, `mock_reranker`, `sample_documents`, `mock_hybrid_results`.
