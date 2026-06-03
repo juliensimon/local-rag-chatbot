@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import init_routes, router
-from models import create_embeddings
+from models import create_embeddings, warn_if_reasoning_model
 from qa_chain import create_qa_chain
 from vectorstore import get_indexed_sources, load_or_create_vectorstore
 
@@ -63,6 +63,7 @@ app = create_api_app()
 @app.on_event("startup")
 async def startup_event():
     """Initialize QA chain on startup."""
+    warn_if_reasoning_model()
     qa_chain, sources = initialize_qa_chain()
     init_routes(qa_chain, sources)
 
