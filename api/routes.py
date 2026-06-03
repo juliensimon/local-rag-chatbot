@@ -18,6 +18,7 @@ from api.streaming import (
     stream_vanilla_response,
 )
 from config import PDF_PATH
+from memory import recall, remember
 from utils import messages_to_tuples
 
 router = APIRouter()
@@ -96,6 +97,7 @@ async def chat(request: ChatRequest):
         rewritten_query = None
         hybrid_scores = None
 
+        memories = recall(request.message) if request.memory_enabled else None
         stream_input = {
             "question": request.message,
             "chat_history": chat_history,
@@ -104,6 +106,8 @@ async def chat(request: ChatRequest):
             "use_reranking": request.use_reranking,
             "hybrid_alpha": hybrid_alpha,
         }
+        if memories:
+            stream_input["memories"] = memories
         if metadata_filter:
             stream_input["filter"] = metadata_filter
 
@@ -117,6 +121,8 @@ async def chat(request: ChatRequest):
         context = build_context_response(
             source_docs, docs_with_scores, rewritten_query, hybrid_scores
         )
+        if request.memory_enabled:
+            remember(request.message, full_response)
         return ChatResponse(response=full_response, context=context)
     else:
         # Vanilla LLM
@@ -125,14 +131,18 @@ async def chat(request: ChatRequest):
         llm = create_llm(streaming=False)
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        vanilla_system = SystemMessage(
-            content=(
-                "Answer naturally and helpfully. "
-                "Do not include citations, sources, references, or a 'Sources:' section. "
-                "If you are unsure, say so."
-            )
+        memories = recall(request.message) if request.memory_enabled else None
+        system_content = (
+            "Answer naturally and helpfully. "
+            "Do not include citations, sources, references, or a 'Sources:' section. "
+            "If you are unsure, say so."
         )
+        if memories:
+            system_content = f"{memories}\n\n{system_content}"
+        vanilla_system = SystemMessage(content=system_content)
         response = llm.invoke([vanilla_system, HumanMessage(content=request.message)])
+        if request.memory_enabled:
+            remember(request.message, response.content)
         return ChatResponse(response=response.content, context=None)
 
 
@@ -150,6 +160,7 @@ async def chat_stream(request: ChatRequest):
         metadata_filter = validate_doc_filter(request.doc_filter)
         hybrid_alpha = request.hybrid_alpha / 100.0
 
+        memories = recall(request.message) if request.memory_enabled else None
         return StreamingResponse(
             stream_rag_response(
                 _qa_chain,
@@ -160,6 +171,8 @@ async def chat_stream(request: ChatRequest):
                 request.use_query_rewriting,
                 request.use_reranking,
                 hybrid_alpha,
+                memories,
+                request.memory_enabled,
             ),
             media_type="text/event-stream",
             headers={
@@ -173,8 +186,11 @@ async def chat_stream(request: ChatRequest):
 
         llm = create_llm(streaming=True)
 
+        memories = recall(request.message) if request.memory_enabled else None
         return StreamingResponse(
-            stream_vanilla_response(llm, request.message),
+            stream_vanilla_response(
+                llm, request.message, memories, request.memory_enabled
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

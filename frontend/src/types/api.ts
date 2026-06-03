@@ -18,6 +18,7 @@ export interface ChatRequest {
   use_query_rewriting?: boolean
   use_reranking?: boolean
   hybrid_alpha?: number // 0-100
+  memory_enabled?: boolean
 }
 
 /** A retrieved source document */
@@ -88,4 +89,5 @@ export const DEFAULT_CHAT_SETTINGS = {
   use_query_rewriting: false,
   use_reranking: false,
   hybrid_alpha: 70,
+  memory_enabled: false,
 } as const

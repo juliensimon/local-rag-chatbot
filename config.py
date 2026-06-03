@@ -12,6 +12,12 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "dummy")
 CHROMA_PATH = os.getenv("CHROMA_PATH", "vectorstore")
 PDF_PATH = os.getenv("PDF_PATH", "pdf")
 
+# Persistent memory (mem0) — optional, self-hosted and fully local.
+# Off by default so the app behaves exactly as before unless explicitly enabled.
+MEM0_ENABLED = os.getenv("MEM0_ENABLED", "0") == "1"
+MEM0_USER_ID = os.getenv("MEM0_USER_ID", "julien")
+MEM0_PATH = os.getenv("MEM0_PATH", "mem0_store")
+
 # Input validation
 MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "10000"))
 ALLOWED_SEARCH_TYPES = {"mmr", "similarity", "hybrid"}

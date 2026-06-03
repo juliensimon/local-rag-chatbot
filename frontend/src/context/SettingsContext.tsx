@@ -8,6 +8,7 @@ import { DEFAULT_CHAT_SETTINGS } from '@/types/api'
 
 interface Settings {
   ragEnabled: boolean
+  memoryEnabled: boolean
   searchType: SearchType
   docFilter: string | null
   useQueryRewriting: boolean
@@ -17,6 +18,7 @@ interface Settings {
 
 interface SettingsContextValue extends Settings {
   setRagEnabled: (enabled: boolean) => void
+  setMemoryEnabled: (enabled: boolean) => void
   setSearchType: (type: SearchType) => void
   setDocFilter: (filter: string | null) => void
   setUseQueryRewriting: (enabled: boolean) => void
@@ -29,6 +31,7 @@ const SettingsContext = createContext<SettingsContextValue | undefined>(undefine
 
 const initialSettings: Settings = {
   ragEnabled: DEFAULT_CHAT_SETTINGS.rag_enabled,
+  memoryEnabled: DEFAULT_CHAT_SETTINGS.memory_enabled,
   searchType: DEFAULT_CHAT_SETTINGS.search_type,
   docFilter: DEFAULT_CHAT_SETTINGS.doc_filter,
   useQueryRewriting: DEFAULT_CHAT_SETTINGS.use_query_rewriting,
@@ -41,6 +44,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const setRagEnabled = useCallback((enabled: boolean) => {
     setSettings((prev) => ({ ...prev, ragEnabled: enabled }))
+  }, [])
+
+  const setMemoryEnabled = useCallback((enabled: boolean) => {
+    setSettings((prev) => ({ ...prev, memoryEnabled: enabled }))
   }, [])
 
   const setSearchType = useCallback((type: SearchType) => {
@@ -72,6 +79,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       value={{
         ...settings,
         setRagEnabled,
+        setMemoryEnabled,
         setSearchType,
         setDocFilter,
         setUseQueryRewriting,

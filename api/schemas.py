@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
     use_query_rewriting: bool = False
     use_reranking: bool = False
     hybrid_alpha: int = Field(default=70, ge=0, le=100)
+    memory_enabled: bool = False
 
 
 class SourceDocument(BaseModel):

@@ -76,6 +76,8 @@ def stream_rag_response(
     use_query_rewriting: bool,
     use_reranking: bool,
     hybrid_alpha: float,
+    memories: Optional[str] = None,
+    remember_turn: bool = False,
 ) -> Generator[str, None, None]:
     """Stream RAG response as SSE events.
 
@@ -100,6 +102,8 @@ def stream_rag_response(
         "use_reranking": use_reranking,
         "hybrid_alpha": hybrid_alpha,
     }
+    if memories:
+        stream_input["memories"] = memories
     if metadata_filter:
         stream_input["filter"] = metadata_filter
 
@@ -108,6 +112,7 @@ def stream_rag_response(
     rewritten_query = None
     hybrid_scores = None
 
+    full_text = ""
     for chunk_data in qa_chain.stream(stream_input):
         chunk = chunk_data.get("chunk", "")
         source_docs = chunk_data.get("source_documents", [])
@@ -116,6 +121,7 @@ def stream_rag_response(
         hybrid_scores = chunk_data.get("hybrid_scores")
 
         if chunk:
+            full_text += chunk
             yield format_sse_event("token", {"content": chunk})
 
     # Send context at the end
@@ -125,8 +131,16 @@ def stream_rag_response(
     yield format_sse_event("context", context.model_dump())
     yield format_sse_event("done", {})
 
+    # Persist this turn to long-term memory (best-effort, after streaming)
+    if remember_turn:
+        from memory import remember
 
-def stream_vanilla_response(llm, message: str) -> Generator[str, None, None]:
+        remember(message, full_text)
+
+
+def stream_vanilla_response(
+    llm, message: str, memories: Optional[str] = None, remember_turn: bool = False
+) -> Generator[str, None, None]:
     """Stream vanilla LLM response as SSE events.
 
     Args:
@@ -138,20 +152,29 @@ def stream_vanilla_response(llm, message: str) -> Generator[str, None, None]:
     """
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    vanilla_system = SystemMessage(
-        content=(
-            "Answer naturally and helpfully. "
-            "Do not include citations, sources, references, or a 'Sources:' section. "
-            "If you are unsure, say so."
-        )
+    system_content = (
+        "Answer naturally and helpfully. "
+        "Do not include citations, sources, references, or a 'Sources:' section. "
+        "If you are unsure, say so."
     )
+    if memories:
+        system_content = f"{memories}\n\n{system_content}"
+    vanilla_system = SystemMessage(content=system_content)
 
+    full_text = ""
     try:
         for chunk in llm.stream([vanilla_system, HumanMessage(content=message)]):
             if chunk.content:
+                full_text += chunk.content
                 yield format_sse_event("token", {"content": chunk.content})
     except Exception as e:
         yield format_sse_event("error", {"message": str(e)})
         return
 
     yield format_sse_event("done", {})
+
+    # Persist this turn to long-term memory (best-effort, after streaming)
+    if remember_turn:
+        from memory import remember
+
+        remember(message, full_text)

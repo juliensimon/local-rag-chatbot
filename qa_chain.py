@@ -322,6 +322,11 @@ Rewritten query (keywords and key phrases only, be concise):"""
         
         context = "\n\n---\n\n".join(context_parts)
 
+        # Prepend persistent memory (mem0) facts, if provided
+        memories = inputs.get("memories")
+        if memories:
+            context = f"{memories}\n\n---\n\n{context}"
+
         # Format chat history
         history_str = format_chat_history(chat_history)
 

@@ -17,6 +17,21 @@ from vectorstore import (
 )
 
 
+def _paginated_get(metadatas):
+    """A vectorstore.get() side effect that returns the page once, then empty.
+
+    Mirrors how Chroma's limit/offset paging terminates, so the paginated
+    get_indexed_sources() loop ends instead of repeating the same page forever.
+    """
+
+    def _get(*args, **kwargs):
+        if kwargs.get("offset", 0) == 0:
+            return {"metadatas": metadatas}
+        return {"metadatas": []}
+
+    return _get
+
+
 def test_get_text_splitter():
     """Test text splitter creation."""
     splitter = get_text_splitter()
@@ -114,12 +129,9 @@ def test_load_or_create_vectorstore_new(mock_exists, mock_chroma, mock_embedding
 def test_handle_existing_vectorstore(mock_chroma, mock_get_pdfs, mock_embeddings):
     """Test handling existing vectorstore."""
     mock_vectorstore = MagicMock()
-    mock_vectorstore.get.return_value = {
-        "metadatas": [
-            {"source": "pdf/existing.pdf"},
-            {"source": "pdf/another.pdf"},
-        ]
-    }
+    mock_vectorstore.get.side_effect = _paginated_get(
+        [{"source": "pdf/existing.pdf"}, {"source": "pdf/another.pdf"}]
+    )
     mock_chroma.return_value = mock_vectorstore
     mock_get_pdfs.return_value = ["pdf/existing.pdf", "pdf/new.pdf"]
 
@@ -134,9 +146,7 @@ def test_handle_existing_vectorstore(mock_chroma, mock_get_pdfs, mock_embeddings
 def test_handle_existing_vectorstore_no_new_files(mock_chroma, mock_get_pdfs, mock_embeddings):
     """Test handling existing vectorstore with no new files."""
     mock_vectorstore = MagicMock()
-    mock_vectorstore.get.return_value = {
-        "metadatas": [{"source": "pdf/existing.pdf"}]
-    }
+    mock_vectorstore.get.side_effect = _paginated_get([{"source": "pdf/existing.pdf"}])
     mock_chroma.return_value = mock_vectorstore
     mock_get_pdfs.return_value = ["pdf/existing.pdf"]
 

@@ -78,6 +78,28 @@ def load_or_create_vectorstore(embeddings):
     return create_new_vectorstore(embeddings)
 
 
+def get_indexed_sources(vectorstore, page_size=10000):
+    """Return the set of source paths already indexed, fetched in pages.
+
+    Chroma's ``get()`` with no limit pulls every row in one query, which trips
+    SQLite's "too many SQL variables" on large collections. Paginating with
+    limit/offset keeps each query bounded so it scales to tens of thousands of
+    chunks.
+    """
+    sources = set()
+    offset = 0
+    while True:
+        batch = vectorstore.get(include=["metadatas"], limit=page_size, offset=offset)
+        metadatas = (batch or {}).get("metadatas") or []
+        if not metadatas:
+            break
+        for meta in metadatas:
+            if meta and meta.get("source"):
+                sources.add(meta["source"])
+        offset += len(metadatas)
+    return sources
+
+
 def handle_existing_vectorstore(embeddings):
     """Handle loading and updating existing vectorstore.
 
@@ -96,15 +118,7 @@ def handle_existing_vectorstore(embeddings):
     if not current_pdfs:
         raise FileNotFoundError("No PDF files found in directory.")
 
-    collection = vectorstore.get()
-    if not collection or not collection.get("metadatas"):
-        processed_files = set()
-    else:
-        processed_files = {
-            meta.get("source")
-            for meta in collection["metadatas"]
-            if meta and meta.get("source")
-        }
+    processed_files = get_indexed_sources(vectorstore)
 
     new_pdfs = [pdf for pdf in current_pdfs if pdf not in processed_files]
 

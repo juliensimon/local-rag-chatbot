@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import init_routes, router
 from models import create_embeddings
 from qa_chain import create_qa_chain
-from vectorstore import load_or_create_vectorstore
+from vectorstore import get_indexed_sources, load_or_create_vectorstore
 
 
 def create_api_app() -> FastAPI:
@@ -48,18 +48,10 @@ def initialize_qa_chain():
     vectorstore = load_or_create_vectorstore(embeddings)
     chain = create_qa_chain(vectorstore)
 
-    # Get available document sources
-    collection = vectorstore.get()
-    if not collection or not collection.get("metadatas"):
-        sources = []
-    else:
-        sources = sorted(
-            set(
-                os.path.basename(meta.get("source", ""))
-                for meta in collection["metadatas"]
-                if meta and meta.get("source")
-            )
-        )
+    # Get available document sources (paginated to handle large collections)
+    sources = sorted(
+        {os.path.basename(s) for s in get_indexed_sources(vectorstore)}
+    )
 
     return chain, sources
 
