@@ -11,6 +11,7 @@ fails with a 400 "exceeds context size" and nothing gets stored.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from config import (
     EMBEDDING_MODEL_NAME,
@@ -26,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 _memory = None
 _init_failed = False
+
+# Single background worker for writes: mem0.add() is a second LLM round-trip
+# (fact extraction), so it runs off the request path. One worker serializes
+# writes to avoid concurrent Chroma access.
+_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mem0-remember")
 
 
 def _get_memory():
@@ -100,11 +106,11 @@ def recall(query, user_id=MEM0_USER_ID):
     )
 
 
-def remember(user_message, assistant_message, user_id=MEM0_USER_ID):
-    """Persist the latest turn so facts survive restarts. Best-effort.
+def _remember_sync(user_message, assistant_message, user_id):
+    """The actual mem0 write (a second LLM call for fact extraction).
 
-    A failure here must never break the chat response, so it is logged and
-    swallowed — memory is auxiliary to answering.
+    Runs on the background worker, never on the request path. Best-effort: a
+    failure is logged and swallowed — memory is auxiliary to answering.
     """
     mem = _get_memory()
     if mem is None:
@@ -119,3 +125,15 @@ def remember(user_message, assistant_message, user_id=MEM0_USER_ID):
         )
     except Exception as e:
         logger.warning("mem0 remember failed: %s", e)
+
+
+def remember(user_message, assistant_message, user_id=MEM0_USER_ID):
+    """Queue the latest turn for extraction + storage, off the request path.
+
+    Returns immediately: the mem0 add is a second LLM round-trip, so it runs on
+    a background worker instead of blocking the chat response. Trade-off: a fact
+    stated this turn may not be recalled until the write lands, so rapid
+    same-session follow-ups can miss it. Returns the Future for callers/tests
+    that want to await completion.
+    """
+    return _writer.submit(_remember_sync, user_message, assistant_message, user_id)

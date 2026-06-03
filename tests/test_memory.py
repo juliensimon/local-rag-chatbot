@@ -130,32 +130,42 @@ def test_recall_swallows_search_error():
 
 # -------------------------------------------------------------- remember
 
-def test_remember_noop_when_unavailable():
-    """remember is a safe no-op when the layer is off."""
+def test_remember_sync_noop_when_unavailable():
+    """The write worker is a safe no-op when the layer is off."""
     with patch("memory._get_memory", return_value=None):
-        memory.remember("hi", "hello")  # must not raise
+        memory._remember_sync("hi", "hello", "julien")  # must not raise
 
 
-def test_remember_adds_turn_with_user_id():
-    """remember persists the user+assistant turn under the configured user_id."""
+def test_remember_sync_adds_turn_with_user_id():
+    """The write worker stores the user+assistant turn under the given user_id."""
     fake_mem = MagicMock()
     with patch("memory._get_memory", return_value=fake_mem):
-        memory.remember("hi", "hello")
+        memory._remember_sync("hi", "hello", "julien")
 
     args, kwargs = fake_mem.add.call_args
     assert args[0] == [
         {"role": "user", "content": "hi"},
         {"role": "assistant", "content": "hello"},
     ]
-    assert kwargs["user_id"] == memory.MEM0_USER_ID
+    assert kwargs["user_id"] == "julien"
 
 
-def test_remember_swallows_add_error():
-    """An add failure must never break the chat response."""
+def test_remember_sync_swallows_add_error():
+    """An add failure must never propagate (it runs off the request path)."""
     fake_mem = MagicMock()
     fake_mem.add.side_effect = RuntimeError("boom")
     with patch("memory._get_memory", return_value=fake_mem):
-        memory.remember("hi", "hello")  # must not raise
+        memory._remember_sync("hi", "hello", "julien")  # must not raise
+
+
+def test_remember_runs_in_background_and_persists():
+    """remember() returns immediately; the write completes on the worker thread."""
+    fake_mem = MagicMock()
+    with patch("memory._get_memory", return_value=fake_mem):
+        future = memory.remember("hi", "hello")
+        future.result(timeout=5)  # wait for the background write to land
+    fake_mem.add.assert_called_once()
+    assert fake_mem.add.call_args.kwargs["user_id"] == memory.MEM0_USER_ID
 
 
 # ----------------------------------------------- prompt-injection wiring
