@@ -1,5 +1,6 @@
 """Integration tests for the RAG application."""
 
+import os
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -10,6 +11,12 @@ from utils import format_chat_history, format_context_with_highlight, messages_t
 from vectorstore import load_or_create_vectorstore
 
 
+@pytest.mark.skipif(
+    not os.environ.get("RUN_LIVE_TESTS"),
+    reason="not hermetic: runs load_or_create_vectorstore against the real "
+    "vectorstore/ + pdf/ on disk, which is slow and can hang depending on local "
+    "state. Set RUN_LIVE_TESTS=1 to run.",
+)
 @patch("vectorstore.Chroma")
 @patch("models.HuggingFaceEmbeddings")
 def test_integration_rag_flow(mock_embeddings_class, mock_chroma_class):
