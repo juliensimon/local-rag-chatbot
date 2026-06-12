@@ -40,3 +40,9 @@ pdf
 
 
 
+
+# Demo artifacts (mem0 demo)
+.venv/
+mem0_store/
+pdf_demo/
+vectorstore_demo/
