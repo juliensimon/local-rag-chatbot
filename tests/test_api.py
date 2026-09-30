@@ -198,7 +198,7 @@ class TestRoutes:
 
 class TestAppFactory:
     def test_create_api_app_mounts_routes(self):
-        paths = {route.path for route in create_api_app().routes}
+        paths = set(create_api_app().openapi()["paths"])
         assert {"/api/health", "/api/sources", "/api/chat", "/api/chat/stream"} <= paths
 
     @patch("api.main.create_qa_chain")
