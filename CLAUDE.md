@@ -46,7 +46,9 @@ This is a RAG (Retrieval-Augmented Generation) chatbot built with LangChain, Fas
 
 ### Key Components
 
-- **`config.py`**: All configurable parameters (chunk size, retrieval settings, prompt templates). Environment variables: `OPENAI_BASE_URL`, `OPENAI_MODEL`, `CHROMA_PATH`, `PDF_PATH`, `EMBEDDING_MODEL`, `RERANKER_MODEL`
+- **`config.py`**: All configurable parameters (chunk size, retrieval settings, prompt templates). Environment variables: `OPENAI_BASE_URL`, `OPENAI_MODEL`, `CHROMA_PATH`, `PDF_PATH`, `USER_PDF_ROOT`, `EMBEDDING_MODEL`, `RERANKER_MODEL`
+
+- **`api/registry.py`**: `CollectionRegistry` maps a request's optional `user_id` to a corpus. `None` → shared corpus (`PDF_PATH`, Chroma collection `langchain`, loaded at startup). A user ID → `USER_PDF_ROOT/<user_id>/` indexed into collection `user_<user_id>` in the same `CHROMA_PATH`, built lazily on first request and cached. Users without PDFs get a 404 (never a fallback to the shared corpus). `USER_PDF_ROOT` must not sit under `PDF_PATH` (the shared loader globs recursively). `user_id` is a selector, not an authenticated identity.
 
 - **`models.py`**: Factory functions for LLM (`ChatOpenAI` pointing to local llama-server at port 8080) and embeddings (`BAAI/bge-small-en-v1.5`)
 
@@ -91,7 +93,7 @@ Key directories:
 
 API endpoints consumed:
 - `GET /api/health` - Health check
-- `GET /api/sources` - Available documents
+- `GET /api/sources?user_id=` - Available documents (shared corpus if `user_id` omitted)
 - `POST /api/chat/stream` - SSE streaming chat (events: `token`, `context`, `done`, `error`)
 
 ### Frontend Library Notes

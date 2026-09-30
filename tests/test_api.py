@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from langchain_core.documents import Document
 
 from api import routes
-from api.main import create_api_app, initialize_qa_chain
+from api.main import create_api_app, initialize_registry
+from api.registry import Collection, CollectionRegistry
 from api.streaming import (
     build_context_response,
     format_sse_event,
@@ -55,19 +56,50 @@ def qa_chain(docs):
 
 
 @pytest.fixture
-def client(qa_chain):
+def shared(qa_chain):
+    return Collection(qa_chain=qa_chain, pdf_path=PDF_PATH, sources=["a.pdf", "b.pdf"])
+
+
+@pytest.fixture
+def user_root(tmp_path):
+    """User corpora root with one user, 'alice', who owns alice.pdf."""
+    (tmp_path / "alice").mkdir()
+    (tmp_path / "alice" / "alice.pdf").write_bytes(b"%PDF")
+    with patch("vectorstore.USER_PDF_ROOT", str(tmp_path)):
+        yield tmp_path
+
+
+@pytest.fixture
+def alice_chain():
+    chain = MagicMock()
+    chain.stream.return_value = [{"chunk": "Alice answer", "source_documents": []}]
+    return chain
+
+
+@pytest.fixture
+def build_collection(user_root, alice_chain):
+    """Stub out indexing; everything else in the registry runs for real."""
+    def fake_build(_embeddings, pdf_path, collection_name):
+        return Collection(qa_chain=alice_chain, pdf_path=pdf_path, sources=["alice.pdf"])
+
+    with patch("api.registry.build_collection", side_effect=fake_build) as mock_build:
+        yield mock_build
+
+
+@pytest.fixture
+def client(shared, build_collection):
     app = FastAPI()
     app.include_router(routes.router, prefix="/api")
-    routes.init_routes(qa_chain, ["a.pdf", "b.pdf"])
+    routes.init_routes(CollectionRegistry(embeddings=None, shared=shared))
     yield TestClient(app)
-    routes.init_routes(None, [])
+    routes.init_routes(None)
 
 
 @pytest.fixture
 def uninitialized_client():
     app = FastAPI()
     app.include_router(routes.router, prefix="/api")
-    routes.init_routes(None, [])
+    routes.init_routes(None)
     return TestClient(app)
 
 
@@ -119,15 +151,28 @@ class TestStreamingHelpers:
 
 
 class TestValidateDocFilter:
-    def test_all_documents_means_no_filter(self, client):
-        assert routes.validate_doc_filter(None) is None
-        assert routes.validate_doc_filter("All Documents") is None
+    def test_all_documents_means_no_filter(self, shared):
+        assert routes.validate_doc_filter(None, shared) is None
+        assert routes.validate_doc_filter("All Documents", shared) is None
 
-    def test_unknown_source_is_ignored(self, client):
-        assert routes.validate_doc_filter("../etc/passwd") is None
+    def test_unknown_source_is_ignored(self, shared):
+        assert routes.validate_doc_filter("../etc/passwd", shared) is None
 
-    def test_known_source(self, client):
-        assert routes.validate_doc_filter("a.pdf") == {"source": {"$eq": os.path.join(PDF_PATH, "a.pdf")}}
+    def test_known_source(self, shared):
+        assert routes.validate_doc_filter("a.pdf", shared) == {
+            "source": {"$eq": os.path.join(PDF_PATH, "a.pdf")}
+        }
+
+    def test_filter_path_is_rooted_in_the_collection(self):
+        # Chroma stores the loader's path; a filter rooted elsewhere would silently match nothing
+        user = Collection(qa_chain=None, pdf_path="pdf_users/alice", sources=["x.pdf"])
+        assert routes.validate_doc_filter("x.pdf", user) == {
+            "source": {"$eq": os.path.join("pdf_users/alice", "x.pdf")}
+        }
+
+    def test_source_from_another_collection_is_ignored(self):
+        user = Collection(qa_chain=None, pdf_path="pdf_users/alice", sources=["x.pdf"])
+        assert routes.validate_doc_filter("a.pdf", user) is None
 
 
 class TestRoutes:
@@ -196,26 +241,82 @@ class TestRoutes:
         mock_create_llm.assert_called_once_with(streaming=True)
 
 
+class TestPerUserRoutes:
+    """A request's user_id must decide which corpus answers it, and nothing else."""
+
+    def test_sources_are_scoped_to_the_user(self, client):
+        assert client.get("/api/sources", params={"user_id": "alice"}).json() == {
+            "sources": ["alice.pdf"]
+        }
+
+    @pytest.mark.parametrize("path", ["/api/chat", "/api/chat/stream"])
+    def test_chat_answers_from_the_users_collection_only(
+        self, client, qa_chain, alice_chain, user_root, path
+    ):
+        response = client.post(
+            path,
+            json={"message": "q", "rag_enabled": True, "user_id": "alice", "doc_filter": "alice.pdf"},
+        )
+        assert response.status_code == 200
+        assert "Alice answer" in response.text
+        qa_chain.stream.assert_not_called()
+        stream_input = alice_chain.stream.call_args[0][0]
+        assert stream_input["filter"] == {
+            "source": {"$eq": os.path.join(str(user_root / "alice"), "alice.pdf")}
+        }
+
+    def test_shared_doc_filter_cannot_reach_into_a_user_collection(self, client, alice_chain):
+        client.post(
+            "/api/chat",
+            json={"message": "q", "rag_enabled": True, "user_id": "alice", "doc_filter": "a.pdf"},
+        )
+        assert "filter" not in alice_chain.stream.call_args[0][0]
+
+    def test_user_collection_is_indexed_once(self, client, build_collection):
+        for _ in range(3):
+            client.get("/api/sources", params={"user_id": "alice"})
+        build_collection.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "method,path,kwargs",
+        [
+            ("get", "/api/sources", {"params": {"user_id": "bob"}}),
+            ("post", "/api/chat", {"json": {"message": "q", "rag_enabled": True, "user_id": "bob"}}),
+            ("post", "/api/chat/stream", {"json": {"message": "q", "rag_enabled": True, "user_id": "bob"}}),
+        ],
+    )
+    def test_unknown_user_is_404_not_the_shared_corpus(
+        self, client, qa_chain, user_root, method, path, kwargs
+    ):
+        # Falling back to the shared corpus would answer from documents the user never chose
+        response = getattr(client, method)(path, **kwargs)
+        assert response.status_code == 404
+        qa_chain.stream.assert_not_called()
+        assert not (user_root / "bob").exists()
+
+    @pytest.mark.parametrize("user_id", ["../pdf", "alice/..", "", "-alice", "a" * 65])
+    def test_unsafe_user_id_is_rejected(self, client, user_id):
+        assert client.get("/api/sources", params={"user_id": user_id}).status_code == 422
+        response = client.post(
+            "/api/chat", json={"message": "q", "rag_enabled": True, "user_id": user_id}
+        )
+        assert response.status_code == 422
+
+    @patch("models.create_llm")
+    def test_vanilla_chat_does_not_load_a_collection(self, mock_create_llm, client, build_collection):
+        mock_create_llm.return_value.invoke.return_value = MagicMock(content="ok")
+        response = client.post("/api/chat", json={"message": "q", "user_id": "bob"})
+        assert response.status_code == 200
+        build_collection.assert_not_called()
+
+
 class TestAppFactory:
     def test_create_api_app_mounts_routes(self):
         paths = set(create_api_app().openapi()["paths"])
         assert {"/api/health", "/api/sources", "/api/chat", "/api/chat/stream"} <= paths
 
-    @patch("api.main.create_qa_chain")
-    @patch("api.main.load_or_create_vectorstore")
+    @patch("api.main.create_registry")
     @patch("api.main.create_embeddings")
-    def test_initialize_qa_chain_lists_sources(self, _embeddings, mock_load, mock_chain):
-        mock_load.return_value.get.return_value = {
-            "metadatas": [{"source": "pdf/b.pdf"}, {"source": "pdf/a.pdf"}, {"source": "pdf/a.pdf"}, {}]
-        }
-        chain, sources = initialize_qa_chain()
-        assert chain is mock_chain.return_value
-        assert sources == ["a.pdf", "b.pdf"]
-
-    @patch("api.main.create_qa_chain")
-    @patch("api.main.load_or_create_vectorstore")
-    @patch("api.main.create_embeddings")
-    def test_initialize_qa_chain_empty_store(self, _embeddings, mock_load, _chain):
-        mock_load.return_value.get.return_value = {"metadatas": []}
-        _, sources = initialize_qa_chain()
-        assert sources == []
+    def test_initialize_registry(self, mock_embeddings, mock_create_registry):
+        assert initialize_registry() is mock_create_registry.return_value
+        mock_create_registry.assert_called_once_with(mock_embeddings.return_value)

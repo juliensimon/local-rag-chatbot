@@ -2,12 +2,60 @@
 
 import glob
 import os
+import re
 
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import CHROMA_PATH, CHUNK_OVERLAP, CHUNK_SIZE, PDF_PATH
+from config import (
+    CHROMA_PATH,
+    CHUNK_OVERLAP,
+    CHUNK_SIZE,
+    DEFAULT_COLLECTION_NAME,
+    PDF_PATH,
+    USER_COLLECTION_PREFIX,
+    USER_ID_PATTERN,
+    USER_PDF_ROOT,
+)
+
+
+def user_paths(user_id):
+    """Resolve a user's PDF directory and Chroma collection name.
+
+    Args:
+        user_id: User identifier matching USER_ID_PATTERN
+
+    Returns:
+        tuple: (pdf_path, collection_name)
+
+    Raises:
+        ValueError: If user_id is not a safe identifier
+    """
+    if not re.fullmatch(USER_ID_PATTERN, user_id or ""):
+        raise ValueError(f"Invalid user id: {user_id!r}")
+    return os.path.join(USER_PDF_ROOT, user_id), f"{USER_COLLECTION_PREFIX}{user_id}"
+
+
+def get_vectorstore_sources(vectorstore):
+    """List the distinct source filenames stored in a vectorstore.
+
+    Args:
+        vectorstore: Chroma vectorstore instance
+
+    Returns:
+        List[str]: Sorted basenames of indexed PDF files
+    """
+    collection = vectorstore.get()
+    if not collection or not collection.get("metadatas"):
+        return []
+    return sorted(
+        {
+            os.path.basename(meta["source"])
+            for meta in collection["metadatas"]
+            if meta and meta.get("source")
+        }
+    )
 
 
 def get_text_splitter():
@@ -24,16 +72,20 @@ def get_text_splitter():
     )
 
 
-def get_pdf_files():
+def get_pdf_files(pdf_path=None):
     """Get list of PDF files from the specified directory.
+
+    Args:
+        pdf_path: Directory to scan (defaults to PDF_PATH)
 
     Returns:
         List[str]: List of PDF file paths
     """
-    if not os.path.exists(PDF_PATH):
-        os.makedirs(PDF_PATH)
+    pdf_path = pdf_path or PDF_PATH
+    if not os.path.exists(pdf_path):
+        os.makedirs(pdf_path)
         return []
-    return list(glob.glob(os.path.join(PDF_PATH, "*.pdf")))
+    return list(glob.glob(os.path.join(pdf_path, "*.pdf")))
 
 
 def filter_metadata(doc):
@@ -64,35 +116,49 @@ def process_documents(documents, text_splitter):
     return [chunk for chunk in chunks if filter_metadata(chunk)]
 
 
-def load_or_create_vectorstore(embeddings):
+def load_or_create_vectorstore(embeddings, pdf_path=None, collection_name=None):
     """Load existing vectorstore or create a new one.
 
     Args:
         embeddings: Embedding model instance
+        pdf_path: Directory holding the corpus PDFs (defaults to PDF_PATH)
+        collection_name: Chroma collection (defaults to DEFAULT_COLLECTION_NAME)
 
     Returns:
         Chroma: Loaded or newly created vectorstore
     """
+    pdf_path = pdf_path or PDF_PATH
+    collection_name = collection_name or DEFAULT_COLLECTION_NAME
+    # CHROMA_PATH is shared by all collections: a collection missing from an
+    # existing store is created empty and filled by the incremental update path.
     if os.path.exists(CHROMA_PATH):
-        return handle_existing_vectorstore(embeddings)
-    return create_new_vectorstore(embeddings)
+        return handle_existing_vectorstore(embeddings, pdf_path, collection_name)
+    return create_new_vectorstore(embeddings, pdf_path, collection_name)
 
 
-def handle_existing_vectorstore(embeddings):
+def handle_existing_vectorstore(embeddings, pdf_path=None, collection_name=None):
     """Handle loading and updating existing vectorstore.
 
     Args:
         embeddings: Embedding model instance
+        pdf_path: Directory holding the corpus PDFs (defaults to PDF_PATH)
+        collection_name: Chroma collection (defaults to DEFAULT_COLLECTION_NAME)
 
     Returns:
         Chroma: Loaded and potentially updated vectorstore
 
     Exits if no PDF files are found.
     """
-    print("Loading existing Chroma database...")
-    vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+    pdf_path = pdf_path or PDF_PATH
+    collection_name = collection_name or DEFAULT_COLLECTION_NAME
+    print(f"Loading existing Chroma database (collection '{collection_name}')...")
+    vectorstore = Chroma(
+        collection_name=collection_name,
+        persist_directory=CHROMA_PATH,
+        embedding_function=embeddings,
+    )
 
-    current_pdfs = get_pdf_files()
+    current_pdfs = get_pdf_files(pdf_path)
     if not current_pdfs:
         raise FileNotFoundError("No PDF files found in directory.")
 
@@ -109,7 +175,7 @@ def handle_existing_vectorstore(embeddings):
     new_pdfs = [pdf for pdf in current_pdfs if pdf not in processed_files]
 
     if new_pdfs:
-        update_vectorstore(vectorstore, new_pdfs, processed_files)
+        update_vectorstore(vectorstore, new_pdfs, processed_files, pdf_path)
     else:
         print("No new PDF files to process.")
 
@@ -131,16 +197,17 @@ def add_documents_in_batches(vectorstore, documents, batch_size=5000):
         vectorstore.add_documents(batch)
 
 
-def update_vectorstore(vectorstore, new_pdfs, processed_files):
+def update_vectorstore(vectorstore, new_pdfs, processed_files, pdf_path=None):
     """Update existing vectorstore with new documents.
 
     Args:
         vectorstore: Existing Chroma vectorstore
         new_pdfs: List of new PDF file paths
         processed_files: Set of already processed file paths
+        pdf_path: Directory holding the corpus PDFs (defaults to PDF_PATH)
     """
     print(f"Found {len(new_pdfs)} new PDF files to process...")
-    loader = DirectoryLoader(PDF_PATH, glob="**/*.pdf", loader_cls=PyPDFLoader)
+    loader = DirectoryLoader(pdf_path or PDF_PATH, glob="**/*.pdf", loader_cls=PyPDFLoader)
     documents = loader.load()
     new_documents = [
         doc for doc in documents if doc.metadata.get("source") not in processed_files
@@ -153,22 +220,26 @@ def update_vectorstore(vectorstore, new_pdfs, processed_files):
         print("Database updated successfully!")
 
 
-def create_new_vectorstore(embeddings):
+def create_new_vectorstore(embeddings, pdf_path=None, collection_name=None):
     """Create a new vectorstore from documents.
 
     Args:
         embeddings: Embedding model instance
+        pdf_path: Directory holding the corpus PDFs (defaults to PDF_PATH)
+        collection_name: Chroma collection (defaults to DEFAULT_COLLECTION_NAME)
 
     Returns:
         Chroma: Newly created vectorstore
 
     Exits if no PDF files are found.
     """
-    print("Creating new Chroma database...")
-    pdf_files = get_pdf_files()
+    pdf_path = pdf_path or PDF_PATH
+    collection_name = collection_name or DEFAULT_COLLECTION_NAME
+    print(f"Creating new Chroma database (collection '{collection_name}')...")
+    pdf_files = get_pdf_files(pdf_path)
     if not pdf_files:
         raise FileNotFoundError(
-            f"No PDF files found in '{PDF_PATH}' directory. "
+            f"No PDF files found in '{pdf_path}' directory. "
             f"Please add PDF files and run again."
         )
 
@@ -177,13 +248,13 @@ def create_new_vectorstore(embeddings):
 
     os.makedirs(CHROMA_PATH, exist_ok=True)
 
-    loader = DirectoryLoader(PDF_PATH, glob="**/*.pdf", loader_cls=PyPDFLoader)
+    loader = DirectoryLoader(pdf_path, glob="**/*.pdf", loader_cls=PyPDFLoader)
     documents = loader.load()
     filtered_chunks = process_documents(documents, get_text_splitter())
 
     return Chroma.from_documents(
         documents=filtered_chunks,
         embedding=embeddings,
+        collection_name=collection_name,
         persist_directory=CHROMA_PATH,
     )
-

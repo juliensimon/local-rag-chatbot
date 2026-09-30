@@ -58,6 +58,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       use_query_rewriting: settings.useQueryRewriting,
       use_reranking: settings.useReranking,
       hybrid_alpha: settings.hybridAlpha,
+      user_id: settings.userId,
     }
 
     let fullResponse = ''

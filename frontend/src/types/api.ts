@@ -18,6 +18,7 @@ export interface ChatRequest {
   use_query_rewriting?: boolean
   use_reranking?: boolean
   hybrid_alpha?: number // 0-100
+  user_id?: string | null // null = shared corpus
 }
 
 /** A retrieved source document */
@@ -88,4 +89,8 @@ export const DEFAULT_CHAT_SETTINGS = {
   use_query_rewriting: false,
   use_reranking: false,
   hybrid_alpha: 70,
+  user_id: null as string | null,
 } as const
+
+/** Valid user IDs (mirrors USER_ID_PATTERN in config.py) */
+export const USER_ID_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$/

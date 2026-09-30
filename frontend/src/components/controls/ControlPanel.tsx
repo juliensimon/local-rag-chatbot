@@ -5,6 +5,7 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { RagToggle } from './RagToggle'
 import { SearchTypeSelector } from './SearchTypeSelector'
+import { UserSelector } from './UserSelector'
 import { DocumentFilter } from './DocumentFilter'
 import { AdvancedOptions } from './AdvancedOptions'
 
@@ -16,6 +17,7 @@ export function ControlPanel() {
         <div className="flex flex-wrap items-start gap-6">
           <RagToggle />
           <SearchTypeSelector />
+          <UserSelector />
           <DocumentFilter />
         </div>
 
