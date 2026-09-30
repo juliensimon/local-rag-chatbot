@@ -15,8 +15,8 @@ import { useSettings } from '@/context/SettingsContext'
 import { useSources } from '@/hooks/useSources'
 
 export function DocumentFilter() {
-  const { docFilter, setDocFilter, ragEnabled } = useSettings()
-  const { data: sources, isLoading } = useSources()
+  const { docFilter, setDocFilter, ragEnabled, userId } = useSettings()
+  const { data: sources, isLoading } = useSources(userId)
 
   if (!ragEnabled) return null
 

@@ -3,9 +3,11 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
+from api.registry import Collection, CollectionRegistry, UnknownUserError
 from api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -17,49 +19,67 @@ from api.streaming import (
     stream_rag_response,
     stream_vanilla_response,
 )
-from config import PDF_PATH
+from config import USER_ID_PATTERN
 from utils import messages_to_tuples
 
 router = APIRouter()
 
-# These will be set by the main app during initialization
-_qa_chain = None
-_available_sources: set = set()
+# This will be set by the main app during initialization
+_registry: Optional[CollectionRegistry] = None
 
 
-def init_routes(qa_chain, available_sources: list):
-    """Initialize routes with QA chain and available sources.
+def init_routes(registry: Optional[CollectionRegistry]):
+    """Initialize routes with the collection registry.
 
     Args:
-        qa_chain: QAChainWrapper instance
-        available_sources: List of available document source filenames
+        registry: CollectionRegistry instance, or None when not ready
     """
-    global _qa_chain, _available_sources
-    _qa_chain = qa_chain
-    _available_sources = set(available_sources)
+    global _registry
+    _registry = registry
 
 
-def validate_doc_filter(doc_filter: Optional[str]) -> Optional[dict]:
+def require_registry() -> CollectionRegistry:
+    """Return the registry or fail with 503 if startup hasn't finished."""
+    if _registry is None:
+        raise HTTPException(status_code=503, detail="QA chain not initialized")
+    return _registry
+
+
+async def get_collection(user_id: Optional[str]) -> Collection:
+    """Resolve a user's collection, mapping lookup failures to HTTP errors.
+
+    First access indexes the user's PDFs, so it runs in a worker thread to keep
+    the event loop responsive.
+    """
+    registry = require_registry()
+    try:
+        return await run_in_threadpool(registry.get, user_id)
+    except UnknownUserError:
+        raise HTTPException(status_code=404, detail=f"No documents for user '{user_id}'")
+
+
+def validate_doc_filter(doc_filter: Optional[str], collection: Collection) -> Optional[dict]:
     """Validate document filter and return metadata filter dict.
 
     Args:
         doc_filter: Document filename to filter by
+        collection: Collection the filter must belong to
 
     Returns:
         Metadata filter dict or None
     """
     if not doc_filter or doc_filter == "All Documents":
         return None
-    if doc_filter not in _available_sources:
+    if doc_filter not in collection.sources:
         return None
-    full_path = os.path.join(PDF_PATH, doc_filter)
+    full_path = os.path.join(collection.pdf_path, doc_filter)
     return {"source": {"$eq": full_path}}
 
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check API health status."""
-    vectorstore_ready = _qa_chain is not None
+    vectorstore_ready = _registry is not None
     llm_ready = True  # LLM is lazily loaded, assume ready
 
     return HealthResponse(
@@ -70,23 +90,24 @@ async def health_check():
 
 
 @router.get("/sources", response_model=SourcesResponse)
-async def get_sources():
-    """Get list of available document sources."""
-    return SourcesResponse(sources=sorted(_available_sources))
+async def get_sources(user_id: Optional[str] = Query(default=None, pattern=USER_ID_PATTERN)):
+    """Get list of available document sources for a user (shared corpus if omitted)."""
+    collection = await get_collection(user_id)
+    return SourcesResponse(sources=collection.sources)
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Non-streaming chat endpoint."""
-    if _qa_chain is None:
-        raise HTTPException(status_code=503, detail="QA chain not initialized")
+    require_registry()
 
     chat_history = messages_to_tuples(
         [{"role": m.role, "content": m.content} for m in request.history]
     )
 
     if request.rag_enabled:
-        metadata_filter = validate_doc_filter(request.doc_filter)
+        collection = await get_collection(request.user_id)
+        metadata_filter = validate_doc_filter(request.doc_filter, collection)
         hybrid_alpha = request.hybrid_alpha / 100.0
 
         # Collect full response from stream
@@ -107,7 +128,7 @@ async def chat(request: ChatRequest):
         if metadata_filter:
             stream_input["filter"] = metadata_filter
 
-        for chunk_data in _qa_chain.stream(stream_input):
+        for chunk_data in collection.qa_chain.stream(stream_input):
             full_response += chunk_data.get("chunk", "")
             source_docs = chunk_data.get("source_documents", [])
             docs_with_scores = chunk_data.get("docs_with_scores")
@@ -139,20 +160,21 @@ async def chat(request: ChatRequest):
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """Streaming chat endpoint using Server-Sent Events."""
-    if _qa_chain is None:
-        raise HTTPException(status_code=503, detail="QA chain not initialized")
+    require_registry()
 
     chat_history = messages_to_tuples(
         [{"role": m.role, "content": m.content} for m in request.history]
     )
 
     if request.rag_enabled:
-        metadata_filter = validate_doc_filter(request.doc_filter)
+        # Resolve before streaming starts so an unknown user gets a 404, not a broken stream
+        collection = await get_collection(request.user_id)
+        metadata_filter = validate_doc_filter(request.doc_filter, collection)
         hybrid_alpha = request.hybrid_alpha / 100.0
 
         return StreamingResponse(
             stream_rag_response(
-                _qa_chain,
+                collection.qa_chain,
                 request.message,
                 chat_history,
                 request.search_type,

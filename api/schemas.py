@@ -4,6 +4,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from config import USER_ID_PATTERN
+
 
 class Message(BaseModel):
     """A single chat message."""
@@ -23,6 +25,7 @@ class ChatRequest(BaseModel):
     use_query_rewriting: bool = False
     use_reranking: bool = False
     hybrid_alpha: int = Field(default=70, ge=0, le=100)
+    user_id: Optional[str] = Field(default=None, pattern=USER_ID_PATTERN)  # None = shared corpus
 
 
 class SourceDocument(BaseModel):

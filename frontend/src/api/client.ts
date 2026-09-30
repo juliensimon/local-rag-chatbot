@@ -41,10 +41,11 @@ export const api = {
   },
 
   /**
-   * Get list of available document sources
+   * Get list of available document sources for a user (shared corpus if null)
    */
-  async sources(): Promise<SourcesResponse> {
-    const response = await fetch(`${API_BASE}/api/sources`)
+  async sources(userId: string | null = null): Promise<SourcesResponse> {
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : ''
+    const response = await fetch(`${API_BASE}/api/sources${query}`)
     return handleResponse<SourcesResponse>(response)
   },
 

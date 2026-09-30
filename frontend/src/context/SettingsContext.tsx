@@ -13,9 +13,11 @@ interface Settings {
   useQueryRewriting: boolean
   useReranking: boolean
   hybridAlpha: number
+  userId: string | null
 }
 
 interface SettingsContextValue extends Settings {
+  setUserId: (userId: string | null) => void
   setRagEnabled: (enabled: boolean) => void
   setSearchType: (type: SearchType) => void
   setDocFilter: (filter: string | null) => void
@@ -34,6 +36,7 @@ const initialSettings: Settings = {
   useQueryRewriting: DEFAULT_CHAT_SETTINGS.use_query_rewriting,
   useReranking: DEFAULT_CHAT_SETTINGS.use_reranking,
   hybridAlpha: DEFAULT_CHAT_SETTINGS.hybrid_alpha,
+  userId: DEFAULT_CHAT_SETTINGS.user_id,
 }
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
@@ -63,6 +66,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings((prev) => ({ ...prev, hybridAlpha: alpha }))
   }, [])
 
+  const setUserId = useCallback((userId: string | null) => {
+    // Document names are per collection, so a filter can't carry over
+    setSettings((prev) =>
+      prev.userId === userId ? prev : { ...prev, userId, docFilter: null }
+    )
+  }, [])
+
   const resetSettings = useCallback(() => {
     setSettings(initialSettings)
   }, [])
@@ -77,6 +87,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setUseQueryRewriting,
         setUseReranking,
         setHybridAlpha,
+        setUserId,
         resetSettings,
       }}
     >

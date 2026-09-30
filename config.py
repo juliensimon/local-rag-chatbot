@@ -12,6 +12,15 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "dummy")
 CHROMA_PATH = os.getenv("CHROMA_PATH", "vectorstore")
 PDF_PATH = os.getenv("PDF_PATH", "pdf")
 
+# Per-user collections: USER_PDF_ROOT/<user_id>/*.pdf is indexed into its own
+# Chroma collection inside CHROMA_PATH. Must not live under PDF_PATH, because the
+# shared corpus is loaded with a recursive glob and would ingest user files.
+USER_PDF_ROOT = os.getenv("USER_PDF_ROOT", "pdf_users")
+DEFAULT_COLLECTION_NAME = "langchain"  # langchain_chroma default; keeps existing stores readable
+USER_COLLECTION_PREFIX = "user_"
+# Alphanumeric ends keep IDs safe as path segments and valid as Chroma collection names
+USER_ID_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$"
+
 # Input validation
 MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "10000"))
 ALLOWED_SEARCH_TYPES = {"mmr", "similarity", "hybrid"}

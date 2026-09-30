@@ -1,14 +1,11 @@
 """FastAPI application entry point."""
 
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.registry import create_registry
 from api.routes import init_routes, router
 from models import create_embeddings
-from qa_chain import create_qa_chain
-from vectorstore import load_or_create_vectorstore
 
 
 def create_api_app() -> FastAPI:
@@ -38,30 +35,13 @@ def create_api_app() -> FastAPI:
     return app
 
 
-def initialize_qa_chain():
-    """Initialize the QA chain and get available sources.
+def initialize_registry():
+    """Load the shared corpus; per-user collections load on first request.
 
     Returns:
-        tuple: (QAChainWrapper, list of available sources)
+        CollectionRegistry: Registry serving all collections
     """
-    embeddings = create_embeddings()
-    vectorstore = load_or_create_vectorstore(embeddings)
-    chain = create_qa_chain(vectorstore)
-
-    # Get available document sources
-    collection = vectorstore.get()
-    if not collection or not collection.get("metadatas"):
-        sources = []
-    else:
-        sources = sorted(
-            set(
-                os.path.basename(meta.get("source", ""))
-                for meta in collection["metadatas"]
-                if meta and meta.get("source")
-            )
-        )
-
-    return chain, sources
+    return create_registry(create_embeddings())
 
 
 # Create the app instance
@@ -70,9 +50,8 @@ app = create_api_app()
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize QA chain on startup."""
-    qa_chain, sources = initialize_qa_chain()
-    init_routes(qa_chain, sources)
+    """Initialize the collection registry on startup."""
+    init_routes(initialize_registry())
 
 
 if __name__ == "__main__":
