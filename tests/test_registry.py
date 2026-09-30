@@ -1,5 +1,6 @@
 """Tests for the per-user collection registry."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from api.registry import (
     CollectionRegistry,
     UnknownUserError,
     build_collection,
+    check_roots_disjoint,
     create_registry,
 )
 from config import DEFAULT_COLLECTION_NAME, PDF_PATH
@@ -82,6 +84,86 @@ def test_build_collection(mock_load, mock_chain):
     mock_load.assert_called_once_with("emb", "dir", "coll")
     mock_chain.assert_called_once_with(mock_load.return_value)
     assert collection == Collection(mock_chain.return_value, "dir", ["a.pdf", "b.pdf"])
+
+
+def test_users_index_concurrently(registry, user_root):
+    # A slow first index for one user must not block another user's first request
+    for user in ("alice", "bob"):
+        (user_root / user).mkdir()
+        (user_root / user / "doc.pdf").write_bytes(b"%PDF")
+    alice_indexing = threading.Event()
+    bob_done = threading.Event()
+
+    def build(embeddings, pdf_path, collection_name):
+        if collection_name == "user_alice":
+            alice_indexing.set()
+            # Only returns if bob's load completes while alice is still indexing
+            assert bob_done.wait(timeout=5)
+        return MagicMock()
+
+    errors = []
+
+    def load_alice():
+        try:
+            registry.get("alice")
+        except Exception as exc:  # surfaced below; thread exceptions are otherwise lost
+            errors.append(exc)
+
+    with patch("api.registry.build_collection", side_effect=build):
+        alice = threading.Thread(target=load_alice)
+        alice.start()
+        assert alice_indexing.wait(timeout=5)
+        registry.get("bob")
+        bob_done.set()
+        alice.join(timeout=5)
+
+    assert not alice.is_alive()
+    assert errors == []
+
+
+def test_same_user_is_indexed_once_under_concurrency(registry, user_root):
+    (user_root / "alice").mkdir()
+    (user_root / "alice" / "doc.pdf").write_bytes(b"%PDF")
+    started = threading.Event()
+    release = threading.Event()
+
+    def build(*args):
+        started.set()
+        release.wait(timeout=5)
+        return MagicMock()
+
+    with patch("api.registry.build_collection", side_effect=build) as mock_build:
+        first = threading.Thread(target=registry.get, args=("alice",))
+        second = threading.Thread(target=registry.get, args=("alice",))
+        first.start()
+        started.wait(timeout=5)
+        second.start()
+        release.set()
+        first.join(timeout=5)
+        second.join(timeout=5)
+
+    mock_build.assert_called_once()
+
+
+@pytest.mark.parametrize("user_root", ["pdf", "pdf/users"])
+def test_user_root_inside_shared_root_is_rejected(tmp_path, user_root):
+    # The shared corpus globs recursively, so it would ingest every user's PDFs
+    with pytest.raises(ValueError):
+        check_roots_disjoint(str(tmp_path / "pdf"), str(tmp_path / user_root))
+
+
+@pytest.mark.parametrize("user_root", ["pdf_users", "other/pdf"])
+def test_disjoint_roots_are_accepted(tmp_path, user_root):
+    # "pdf_users" shares a string prefix with "pdf" but is a sibling directory
+    check_roots_disjoint(str(tmp_path / "pdf"), str(tmp_path / user_root))
+
+
+@patch("api.registry.build_collection")
+def test_create_registry_refuses_overlapping_roots_before_indexing(mock_build):
+    with patch("api.registry.USER_PDF_ROOT", f"{PDF_PATH}/users"):
+        with pytest.raises(ValueError):
+            create_registry("emb")
+    mock_build.assert_not_called()
 
 
 @patch("api.registry.build_collection")

@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from config import DEFAULT_COLLECTION_NAME, PDF_PATH
+from config import DEFAULT_COLLECTION_NAME, PDF_PATH, USER_PDF_ROOT
 from qa_chain import create_qa_chain
 from vectorstore import (
     get_pdf_files,
@@ -45,6 +45,7 @@ class CollectionRegistry:
         self._embeddings = embeddings
         self._shared = shared
         self._users: dict[str, Collection] = {}
+        self._user_locks: dict[str, threading.Lock] = {}
         self._lock = threading.Lock()
 
     def get(self, user_id: Optional[str]) -> Collection:
@@ -59,8 +60,11 @@ class CollectionRegistry:
         collection = self._users.get(user_id)
         if collection is not None:
             return collection
-        # Serialize first loads so two concurrent requests don't index the same corpus twice
+        # Serialize first loads per user so two concurrent requests don't index the same
+        # corpus twice, while different users can still index in parallel
         with self._lock:
+            user_lock = self._user_locks.setdefault(user_id, threading.Lock())
+        with user_lock:
             if user_id not in self._users:
                 self._users[user_id] = self._load_user(user_id)
             return self._users[user_id]
@@ -74,7 +78,25 @@ class CollectionRegistry:
         return build_collection(self._embeddings, pdf_path, collection_name)
 
 
+def check_roots_disjoint(pdf_path: str, user_pdf_root: str) -> None:
+    """Refuse a user root inside the shared root: the shared corpus is loaded
+    with a recursive glob and would ingest every user's PDFs.
+
+    Raises:
+        ValueError: If user_pdf_root is pdf_path or lies under it
+    """
+    shared = os.path.realpath(pdf_path)
+    users = os.path.realpath(user_pdf_root)
+    if os.path.commonpath([shared, users]) == shared:
+        raise ValueError(
+            f"USER_PDF_ROOT ({user_pdf_root}) must not be inside PDF_PATH ({pdf_path})"
+        )
+
+
 def create_registry(embeddings) -> CollectionRegistry:
     """Build a registry with the shared corpus loaded eagerly."""
+    # Check before indexing: once user chunks reach the shared collection,
+    # fixing the configuration does not remove them
+    check_roots_disjoint(PDF_PATH, USER_PDF_ROOT)
     shared = build_collection(embeddings, PDF_PATH, DEFAULT_COLLECTION_NAME)
     return CollectionRegistry(embeddings, shared)
