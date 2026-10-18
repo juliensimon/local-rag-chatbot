@@ -19,7 +19,8 @@ USER_PDF_ROOT = os.getenv("USER_PDF_ROOT", "pdf_users")
 DEFAULT_COLLECTION_NAME = "langchain"  # langchain_chroma default; keeps existing stores readable
 USER_COLLECTION_PREFIX = "user_"
 # Alphanumeric ends keep IDs safe as path segments and valid as Chroma collection names
-USER_ID_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$"
+# len(USER_COLLECTION_PREFIX) + 58 <= 63
+USER_ID_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,56}[A-Za-z0-9])?$"
 
 # Input validation
 MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "10000"))
